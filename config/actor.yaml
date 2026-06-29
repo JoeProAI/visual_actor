@@ -1,0 +1,43 @@
+# Avatar / actor configuration.
+#
+# Swap the avatar in ONE line: change `avatar` to any key under `avatars`.
+avatar: default
+
+# Renderer backend. Swap rendering strategy in ONE line.
+#   blendshape  -> app/avatar/renderer.py (direct 2D puppet warp, default, no GPU)
+#   mesh        -> app/avatar/mesh_driver.py (3D morphable model regression)
+#   liveportrait-> app/avatar/liveportrait_adapter.py (direct keypoint warp)
+# All three are DIRECT methods: no diffusion / latent denoising anywhere.
+renderer: blendshape
+
+# Output frame rate for server-side rendering and the live-camera stream.
+fps: 60
+width: 480
+height: 640
+
+avatars:
+  default:
+    image: app/assets/avatars/default.png
+    # Normalized (0..1) facial landmark anchors for the 2D puppet rig.
+    anchors:
+      face_center: [0.50, 0.46]
+      left_eye: [0.38, 0.40]
+      right_eye: [0.62, 0.40]
+      mouth_center: [0.50, 0.66]
+      jaw: [0.50, 0.80]
+      nose: [0.50, 0.54]
+
+# Procedural motion intensities (0..1). Tune realism vs. subtlety.
+motion:
+  blink_rate_hz: 0.28          # ~17 blinks / minute
+  saccade_rate_hz: 1.5
+  breathing_rate_hz: 0.25      # ~15 breaths / minute
+  head_sway_amplitude: 0.35
+  micro_expression_amplitude: 0.25
+  gaze_drift_amplitude: 0.4
+
+# Emotion smoothing (exponential time constants, seconds).
+emotion:
+  attack_s: 0.12
+  release_s: 0.45
+  neutral_bias: 0.6

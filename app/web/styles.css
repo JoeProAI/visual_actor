@@ -1,0 +1,102 @@
+:root {
+  --bg: #0d0f17;
+  --panel: #161a26;
+  --accent: #3ad1a0;
+  --text: #e8ecf4;
+  --muted: #8b93a7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+
+header {
+  width: 100%;
+  text-align: center;
+  padding: 18px 0 4px;
+}
+
+header h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; }
+header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+#stage {
+  position: relative;
+  margin: 18px 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  background: #11131c;
+}
+
+#avatar { display: block; background: #11131c; }
+
+#rec-dot {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 8px #ff4d4d;
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+#badge {
+  position: absolute;
+  top: 12px; right: 12px;
+  font-size: 11px;
+  background: rgba(0,0,0,0.55);
+  padding: 3px 8px;
+  border-radius: 10px;
+  color: var(--accent);
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  width: min(640px, 92vw);
+}
+
+#text {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #2a2f40;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 15px;
+}
+
+button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #06231a;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#metrics {
+  width: min(640px, 92vw);
+  margin: 16px 0 40px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 12px 16px;
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+}
+.pass { color: var(--accent); }
+.fail { color: #ff6b6b; }

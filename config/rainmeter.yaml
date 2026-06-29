@@ -1,0 +1,12 @@
+# Rainmeter widget configuration. These values are read by the build script
+# (build_rainmeter_skin.ps1) to generate Resources/variables.inc, and mirror the
+# RAINMETER_* environment variables. Swap widget size in ONE line: edit width.
+server_url: ${RAINMETER_SERVER_URL:-http://127.0.0.1:8765/rainmeter}
+width: ${RAINMETER_WIDTH:-480}
+height: ${RAINMETER_HEIGHT:-640}
+opacity: ${RAINMETER_OPACITY:-255}
+click_through: ${RAINMETER_CLICK_THROUGH:-0}
+always_on_top: ${RAINMETER_ALWAYS_ON_TOP:-1}
+draggable: 1
+refresh_ms: 16                        # widget refresh cadence (~60fps)
+transparent: 1

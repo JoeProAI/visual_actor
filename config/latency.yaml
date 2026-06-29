@@ -1,0 +1,34 @@
+# Latency budget (milliseconds). The latency monitor and benchmark grade
+# every measured stage against these targets and emit PASS / FAIL.
+budget:
+  total_first_visible_frame_ms: 100      # text submit -> first speaking frame
+  first_audio_chunk_ms: 50
+  first_mouth_motion_ms: 70
+  audio_mouth_sync_offset_ms: 15         # absolute tolerance, +/-
+  fallback_switch_ms: 20                 # after timeout detection
+  min_fps: 30
+  preferred_fps: 60
+
+# Fallback trigger thresholds used by the TTS router.
+fallback:
+  # If the active provider yields no first audio chunk within this many ms,
+  # the router abandons it and advances to the next provider in the chain.
+  first_chunk_timeout_ms: 1
+  # Hard ceiling: if total time-to-first-audio exceeds this, force fallback
+  # even if a chunk is "in flight".
+  hard_timeout_ms: 120
+  # Max providers to attempt before giving up.
+  max_attempts: 3
+
+# Monotonic-clock stage names tracked end to end (used by latency_monitor).
+stages:
+  - text_submitted
+  - first_tts_request
+  - first_audio_chunk
+  - fallback_trigger
+  - phoneme_estimate
+  - first_blendshape
+  - first_video_frame
+  - first_frame_displayed
+  - audio_playback_start
+  - mouth_motion_start
