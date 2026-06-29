@@ -49,6 +49,9 @@ async def handle_websocket(websocket, engine: VisualActorEngine) -> None:
             if not text:
                 await websocket.send_json({"type": "error", "message": "empty text"})
                 continue
+            if len(text) > 500:
+                await websocket.send_json({"type": "error", "message": "text too long"})
+                continue
 
             async def on_state(state: dict) -> None:
                 await websocket.send_json(state)
@@ -80,4 +83,4 @@ async def handle_websocket(websocket, engine: VisualActorEngine) -> None:
     except Exception as exc:  # pragma: no cover - network/runtime
         log.warning("WebSocket error: %s", exc)
         with __import__("contextlib").suppress(Exception):
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json({"type": "error", "message": "websocket error"})

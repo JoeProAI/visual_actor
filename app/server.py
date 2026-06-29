@@ -111,6 +111,7 @@ class VisualActorEngine:
         result = SpeechResult(request_id=request_id, provider=None, session=session)
         done = asyncio.Event()
         first_blendshape_marked = False
+        audio_start_marked = False
 
         async def animation_loop() -> None:
             nonlocal first_blendshape_marked
@@ -155,14 +156,16 @@ class VisualActorEngine:
                     break
 
         async def tts_loop() -> None:
+            nonlocal audio_start_marked
             async def _on_provider(name: str) -> None:
                 result.provider = name
 
             try:
                 chunks = self.router.synthesize(text, session=session, on_provider=_on_provider)
                 async for sc in streamer.process(chunks):
-                    if not clock.started and len(sc.pcm):
+                    if not audio_start_marked and len(sc.pcm):
                         session.mark("audio_playback_start")
+                        audio_start_marked = True
                     sync.feed_audio_analysis(sc.visemes, sc.prosody)
                     if on_audio and len(sc.pcm):
                         await on_audio(float32_to_pcm16(sc.pcm), sc.sample_rate)
@@ -183,6 +186,7 @@ class VisualActorEngine:
 
         result.sync_offset_ms = session.sync_offset_ms()
         await self.bus.publish("session.complete", request_id=request_id, provider=result.provider)
+        self.latency.finish(request_id)
         return result
 
 

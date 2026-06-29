@@ -98,3 +98,6 @@ class LatencyMonitor:
 
     def get(self, request_id: str) -> LatencySession | None:
         return self.sessions.get(request_id)
+
+    def finish(self, request_id: str) -> None:
+        self.sessions.pop(request_id, None)
