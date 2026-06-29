@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visual Actor — Live Demo</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Visual Actor</h1>
+    <p>Type text → streaming voice + perfectly synced talking avatar (local, &lt;100ms target)</p>
+  </header>
+
+  <div id="stage">
+    <canvas id="avatar" width="480" height="640"></canvas>
+    <div id="rec-dot" title="live feed"></div>
+    <div id="badge">connecting…</div>
+  </div>
+
+  <div class="controls">
+    <input id="text" type="text" placeholder="Type something for the actor to say…"
+           value="Hello! I am your local real time visual actor." />
+    <button id="say">Speak</button>
+  </div>
+
+  <pre id="metrics">Latency report will appear here after the first utterance.</pre>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
