@@ -41,7 +41,7 @@ class SyncController:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         motion = config.actor.motion
-        self.lipsync = LipSync(lead_ms=10.0)
+        self.lipsync = LipSync(lead_ms=25.0)
         self.emotion = EmotionController(config.actor.emotion)
         self.eyes = EyeController(motion)
         self.head = HeadController(motion)

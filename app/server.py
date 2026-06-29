@@ -112,6 +112,7 @@ class VisualActorEngine:
         done = asyncio.Event()
         first_blendshape_marked = False
         audio_start_marked = False
+        mouth_start_marked = False
 
         async def animation_loop() -> None:
             nonlocal first_blendshape_marked
@@ -156,7 +157,7 @@ class VisualActorEngine:
                     break
 
         async def tts_loop() -> None:
-            nonlocal audio_start_marked
+            nonlocal audio_start_marked, mouth_start_marked
             async def _on_provider(name: str) -> None:
                 result.provider = name
 
@@ -166,6 +167,9 @@ class VisualActorEngine:
                     if not audio_start_marked and len(sc.pcm):
                         session.mark("audio_playback_start")
                         audio_start_marked = True
+                    if not mouth_start_marked and any(v.viseme != "sil" for v in sc.visemes):
+                        session.mark("mouth_motion_start")
+                        mouth_start_marked = True
                     sync.feed_audio_analysis(sc.visemes, sc.prosody)
                     if on_audio and len(sc.pcm):
                         await on_audio(float32_to_pcm16(sc.pcm), sc.sample_rate)
