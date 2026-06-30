@@ -1,0 +1,38 @@
+# Voice provider configuration.
+#
+# Swap the active voice in ONE line: change `active` to any provider key below.
+# Swap a voice within a provider by editing its `voice_id`.
+active: elevenlabs
+
+# Ordered fallback chain. The router tries `active` first, then walks this list
+# whenever a provider is slow / unavailable / over budget.
+fallback_order:
+  - elevenlabs
+  - piper
+  - fish_speech_s2
+
+providers:
+  elevenlabs:
+    type: elevenlabs            # maps to app/tts/elevenlabs_streaming.py
+    voice_id: ${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+    model_id: ${ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}   # Flash, low latency
+    api_key: ${ELEVENLABS_API_KEY:-}
+    output_format: pcm_22050    # raw PCM s16le, 22.05kHz mono -> direct to clock
+    sample_rate: 22050
+    optimize_streaming_latency: 4
+    chunk_length_schedule: [50, 90, 130, 180]
+
+  piper:
+    type: piper                 # maps to app/tts/piper_local.py
+    model_path: ${PIPER_MODEL_PATH:-app/assets/models/piper/en_US-amy-low.onnx}
+    sample_rate: 22050
+    length_scale: 1.0
+    noise_scale: 0.667
+    sentence_silence: 0.0
+
+  fish_speech_s2:
+    type: fish_speech_s2        # maps to app/tts/fish_speech_s2.py
+    model_path: ${FISH_SPEECH_MODEL_PATH:-app/assets/models/fish-speech-s2}
+    sample_rate: 22050
+    reference_audio: null
+    temperature: 0.7

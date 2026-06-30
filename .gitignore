@@ -1,0 +1,5 @@
+.venv/
+benchmark_results.json
+benchmark_report.txt
+__pycache__/
+*.pyc
