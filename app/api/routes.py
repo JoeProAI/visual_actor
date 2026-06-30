@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from fastapi import APIRouter, WebSocket
+from fastapi.responses import HTMLResponse, StreamingResponse
+
 from app.api.websocket import handle_websocket
 from app.avatar.renderer import encode_jpeg
 from app.server import VisualActorEngine
@@ -21,10 +24,7 @@ def _read(name: str) -> str:
     return (WEB_DIR / name).read_text(encoding="utf-8")
 
 
-def build_router(engine: VisualActorEngine):
-    from fastapi import APIRouter, WebSocket
-    from fastapi.responses import HTMLResponse, StreamingResponse
-
+def build_router(engine: VisualActorEngine) -> APIRouter:
     router = APIRouter()
 
     @router.get("/", response_class=HTMLResponse)

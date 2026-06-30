@@ -1,203 +1,304 @@
-// Visual Actor web client.
-// Renders the avatar from streamed blendshape state on a <canvas> (the "live
-// camera feed") and plays streamed PCM audio via WebAudio, keeping both aligned
-// to the server's shared clock. Reports browser display telemetry back.
-
 "use strict";
 
-// ---- Canvas avatar renderer (mirrors app/avatar/renderer.py) -------------- //
-function drawAvatar(ctx, bs, W, H) {
-  const dx = (bs.headYaw / 30) * W * 0.04;
-  const dy = (bs.headPitch / 30) * H * 0.03 - (bs.breath || 0) * H * 0.01;
+const Avatar = window.VisualActorAvatar;
+const canvas = document.getElementById("avatar");
+const ctx = canvas.getContext("2d");
+const statusPill = document.getElementById("status-pill");
+const connectionHint = document.getElementById("connection-hint");
+const providerBadge = document.getElementById("provider-badge");
+const hudFps = document.getElementById("hud-fps");
+const hudProvider = document.getElementById("hud-provider");
+const verdictPill = document.getElementById("verdict-pill");
+const reportBody = document.getElementById("report-body");
+const input = document.getElementById("text");
+const speakButton = document.getElementById("say");
 
-  ctx.fillStyle = "#12131c";
-  ctx.fillRect(0, 0, W, H);
-
-  // Head
-  const cx = 0.5 * W + dx, cy = 0.46 * H + dy;
-  ctx.fillStyle = "#e8c6ae";
-  ellipse(ctx, cx, cy, 0.30 * W, 0.34 * H);
-
-  // Eyes
-  drawEye(ctx, 0.38 * W + dx, 0.40 * H + dy, bs.eyeBlinkLeft, bs.eyeWideLeft,
-          (bs.eyeLookOutLeft || 0) - (bs.eyeLookInLeft || 0),
-          (bs.eyeLookUpLeft || 0) - (bs.eyeLookDownLeft || 0), W, H);
-  drawEye(ctx, 0.62 * W + dx, 0.40 * H + dy, bs.eyeBlinkRight, bs.eyeWideRight,
-          (bs.eyeLookInRight || 0) - (bs.eyeLookOutRight || 0),
-          (bs.eyeLookUpRight || 0) - (bs.eyeLookDownRight || 0), W, H);
-
-  // Brows
-  ctx.fillStyle = "#5a463c";
-  const browL = (bs.browOuterUpLeft || 0) + (bs.browInnerUp || 0);
-  const browR = (bs.browOuterUpRight || 0) + (bs.browInnerUp || 0);
-  ellipse(ctx, 0.38 * W + dx, 0.40 * H + dy - H * (0.04 + 0.02 * browL), 0.06 * W, 0.008 * H);
-  ellipse(ctx, 0.62 * W + dx, 0.40 * H + dy - H * (0.04 + 0.02 * browR), 0.06 * W, 0.008 * H);
-
-  // Mouth
-  const smile = ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) * 0.5;
-  const widthScale = 1 + 0.4 * smile - 0.5 * (bs.mouthPucker || 0) - 0.3 * (bs.mouthFunnel || 0);
-  const mrx = Math.max(2, 0.10 * W * widthScale);
-  const mry = Math.max(1, H * (0.012 + 0.09 * (bs.jawOpen || 0)));
-  const mx = 0.5 * W + dx, my = 0.66 * H + dy - smile * H * 0.01;
-  ctx.fillStyle = "#78323c";
-  ellipse(ctx, mx, my, mrx, mry);
-  if ((bs.jawOpen || 0) > 0.1) {
-    ctx.fillStyle = "#3c141e";
-    ellipse(ctx, mx, my, mrx * 0.8, mry * 0.7);
-  }
-}
-
-function ellipse(ctx, cx, cy, rx, ry) {
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawEye(ctx, ex, ey, blink, wide, lookX, lookY, W, H) {
-  const open = (1 - (blink || 0)) * (1 + 0.4 * (wide || 0));
-  const ery = Math.max(0.5, H * 0.022 * open), erx = W * 0.05;
-  ctx.fillStyle = "#fafafc";
-  ellipse(ctx, ex, ey, erx, ery);
-  if (open > 0.15) {
-    ctx.fillStyle = "#28283c";
-    ellipse(ctx, ex + lookX * erx * 0.5, ey - lookY * ery * 0.6, erx * 0.4, ery * 0.6);
-  }
-}
-
-// ---- Audio playback (scheduled, gapless) ---------------------------------- //
-class AudioPlayer {
-  constructor() {
-    this.ctx = null;
-    this.nextTime = 0;
-    this.started = false;
-    this.onStart = null;
-  }
-  ensure(sampleRate) {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
-      this.nextTime = this.ctx.currentTime;
-    }
-  }
-  play(int16, sampleRate) {
-    this.ensure(sampleRate);
-    const f32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
-    if (f32.length === 0) return;
-    const buf = this.ctx.createBuffer(1, f32.length, sampleRate);
-    buf.copyToChannel(f32, 0);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(this.ctx.destination);
-    const t = Math.max(this.ctx.currentTime, this.nextTime);
-    src.start(t);
-    this.nextTime = t + buf.duration;
-    if (!this.started) {
-      this.started = true;
-      if (this.onStart) this.onStart(performance.now());
-    }
-  }
-  reset() { this.started = false; if (this.ctx) this.nextTime = this.ctx.currentTime; }
-}
-
-function b64ToInt16(b64) {
+function decodePcmBase64(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Int16Array(bytes.buffer, 0, bytes.length >> 1);
 }
 
-// ---- Client controller ----------------------------------------------------- //
-class VisualActorClient {
-  constructor({ canvas, badge, metrics, onProvider }) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
-    this.badge = badge;
-    this.metrics = metrics;
-    this.onProvider = onProvider;
-    this.audio = new AudioPlayer();
-    this.firstFrameDisplayed = false;
-    this.ws = null;
-    this.connect();
-    // idle render so the face is visible before first utterance
-    this.lastBs = { jawOpen: 0.03 };
-    this.renderLoop();
+function resizeCanvasToDisplaySize(canvasEl) {
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvasEl.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (canvasEl.width !== width || canvasEl.height !== height) {
+    canvasEl.width = width;
+    canvasEl.height = height;
+    return true;
+  }
+  return false;
+}
+
+function metricLabel(name) {
+  const labels = {
+    total_first_visible_frame_ms: "First visible frame",
+    first_audio_chunk_ms: "First audio chunk",
+    first_mouth_motion_ms: "First mouth motion",
+    audio_mouth_sync_offset_ms: "Audio↔mouth sync",
+  };
+  return labels[name] || name.replaceAll("_", " ");
+}
+
+function formatMs(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1)} ms`;
+}
+
+function renderReport(report) {
+  if (!report) {
+    reportBody.innerHTML = '<tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>';
+    verdictPill.textContent = "Waiting";
+    verdictPill.dataset.state = "neutral";
+    verdictPill.className = "verdict-pill neutral";
+    return;
   }
 
-  connect() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.ws = new WebSocket(`${proto}://${location.host}/ws`);
-    this.ws.onopen = () => this.setBadge("ready", "var(--accent)");
-    this.ws.onclose = () => { this.setBadge("disconnected", "#ff6b6b"); setTimeout(() => this.connect(), 1500); };
-    this.ws.onerror = () => this.setBadge("error", "#ff6b6b");
-    this.ws.onmessage = (e) => this.onMessage(JSON.parse(e.data));
+  const grade = report?.grade || {};
+  const rows = [];
+  for (const [metric, item] of Object.entries(grade)) {
+    const state = item.pass === true ? "pass" : item.pass === false ? "fail" : "neutral";
+    const verdict = item.pass === true ? "PASS" : item.pass === false ? "FAIL" : "—";
+    rows.push(`
+      <tr class="${state}">
+        <th scope="row">${metricLabel(metric)}</th>
+        <td>${formatMs(item.value)}</td>
+        <td>${formatMs(item.target)}</td>
+        <td><span class="metric-pill ${state}">${verdict}</span></td>
+      </tr>
+    `);
+  }
+  reportBody.innerHTML = rows.length
+    ? rows.join("")
+    : '<tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>';
+
+  const passed = Boolean(report?.passed);
+  verdictPill.textContent = passed ? "PASS" : "FAIL";
+  verdictPill.dataset.state = passed ? "pass" : "fail";
+  verdictPill.className = `verdict-pill ${passed ? "pass" : "fail"}`;
+}
+
+class AudioPlayer {
+  constructor(onStart) {
+    this.ctx = null;
+    this.nextTime = 0;
+    this.started = false;
+    this.onStart = onStart;
   }
 
-  setBadge(text, color) {
-    if (this.badge) { this.badge.textContent = text; this.badge.style.color = color; }
-  }
-
-  onMessage(msg) {
-    switch (msg.type) {
-      case "frame":
-        this.lastBs = msg.blendshapes;
-        if (!this.firstFrameDisplayed) {
-          this.firstFrameDisplayed = true;
-          this.send({ type: "telemetry", event: "first_frame_displayed", t_ms: performance.now() });
-        }
-        break;
-      case "audio":
-        this.audio.play(b64ToInt16(msg.pcm), msg.sample_rate);
-        break;
-      case "provider":
-        this.setBadge("voice: " + msg.name, "var(--accent)");
-        if (this.onProvider) this.onProvider(msg.name);
-        break;
-      case "report":
-        this.renderReport(msg);
-        break;
-      case "error":
-        if (this.metrics) this.metrics.textContent = "Error: " + msg.message;
-        break;
+  ensure(sampleRate) {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+      this.nextTime = this.ctx.currentTime;
     }
   }
 
-  send(obj) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(obj)); }
-
-  say(text) {
-    this.firstFrameDisplayed = false;
-    this.audio.reset();
-    this.send({ type: "say", text });
+  play(int16, sampleRate) {
+    if (!int16.length) return;
+    this.ensure(sampleRate);
+    const f32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    const buffer = this.ctx.createBuffer(1, f32.length, sampleRate);
+    buffer.copyToChannel(f32, 0);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.ctx.destination);
+    const start = Math.max(this.ctx.currentTime, this.nextTime);
+    source.start(start);
+    this.nextTime = start + buffer.duration;
+    if (!this.started) {
+      this.started = true;
+      if (this.onStart) this.onStart();
+    }
   }
 
-  renderReport(msg) {
-    if (!this.metrics) return;
-    const g = msg.grade;
-    const rows = Object.entries(g).map(([k, v]) => {
-      const val = v.value == null ? "n/a" : v.value.toFixed(2);
-      const cls = v.pass === false ? "fail" : "pass";
-      return `<span class="${cls}">${k.padEnd(34)} ${String(val).padStart(8)} / ${v.target}  ${v.pass === false ? "FAIL" : "PASS"}</span>`;
-    });
-    const verdict = msg.passed ? `<span class="pass">VERDICT: PASS</span>` : `<span class="fail">VERDICT: FAIL</span>`;
-    this.metrics.innerHTML = `provider: ${msg.provider}\n` + rows.join("\n") + "\n" + verdict;
-  }
-
-  renderLoop() {
-    drawAvatar(this.ctx, this.lastBs || {}, this.canvas.width, this.canvas.height);
-    requestAnimationFrame(() => this.renderLoop());
+  reset() {
+    this.started = false;
+    if (this.ctx) this.nextTime = this.ctx.currentTime;
   }
 }
 
-// ---- Bootstrap ------------------------------------------------------------- //
+class VisualActorClient {
+  constructor() {
+    this.pose = Avatar.createIdlePose();
+    this.ws = null;
+    this.connected = false;
+    this.busy = false;
+    this.sessionActive = false;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.provider = "—";
+    this.reconnectTimer = 0;
+    this.fps = 0;
+    this.lastTick = 0;
+    this.audio = new AudioPlayer(() => this.sendTelemetry("audio_playback_start"));
+    this.audioFrameCount = 0;
+
+    this.setStatus("connecting", "Connecting…", "Opening live socket…");
+    renderReport(null);
+    this.updateProviderLabels();
+    this.updateSpeakButton();
+
+    speakButton.addEventListener("click", () => this.say());
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.say();
+    });
+
+    window.addEventListener("resize", () => resizeCanvasToDisplaySize(canvas));
+    this.connect();
+    requestAnimationFrame((t) => this.renderLoop(t));
+  }
+
+  setStatus(state, text, hint) {
+    statusPill.dataset.state = state;
+    statusPill.textContent = text;
+    connectionHint.textContent = hint;
+  }
+
+  updateProviderLabels() {
+    providerBadge.textContent = `provider: ${this.provider}`;
+    hudProvider.textContent = this.provider;
+  }
+
+  updateSpeakButton() {
+    speakButton.disabled = !this.connected || this.busy;
+    speakButton.textContent = this.busy ? "Speaking…" : "Speak";
+    speakButton.dataset.state = this.busy ? "busy" : this.connected ? "ready" : "offline";
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = 0;
+      this.connect();
+    }, 1500);
+  }
+
+  connect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = 0;
+    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    this.setStatus("connecting", "Connecting…", "Opening live socket…");
+    this.ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    this.ws.onopen = () => {
+      this.connected = true;
+      this.setStatus("ready", "Ready", "Live stream connected.");
+      this.updateSpeakButton();
+    };
+
+    this.ws.onclose = () => {
+      this.connected = false;
+      this.finishSession();
+      this.setStatus("disconnected", "Disconnected", "Reconnecting…");
+      this.updateSpeakButton();
+      this.scheduleReconnect();
+    };
+
+    this.ws.onerror = () => {
+      this.connected = false;
+      this.setStatus("disconnected", "Disconnected", "Connection error. Reconnecting…");
+      this.updateSpeakButton();
+    };
+
+    this.ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      switch (msg.type) {
+        case "frame":
+          Avatar.copyPose(this.pose, msg.blendshapes);
+          if (this.sessionActive && !this.firstFrameTelemetrySent) {
+            this.firstFrameTelemetrySent = true;
+            this.sendTelemetry("first_frame_displayed");
+          }
+          break;
+        case "audio":
+          this.audio.play(decodePcmBase64(msg.pcm), msg.sample_rate);
+          break;
+        case "provider":
+          this.provider = msg.name || "—";
+          this.updateProviderLabels();
+          break;
+        case "report":
+          if (msg.provider) {
+            this.provider = msg.provider;
+            this.updateProviderLabels();
+          }
+          renderReport(msg);
+          this.finishSession();
+          this.setStatus("ready", "Ready", "Live stream connected.");
+          this.updateSpeakButton();
+          break;
+        case "pong":
+          break;
+        case "error":
+          this.setStatus("disconnected", "Disconnected", msg.message || "Server error");
+          this.finishSession();
+          this.updateSpeakButton();
+          break;
+        default:
+          break;
+      }
+    };
+  }
+
+  finishSession() {
+    this.busy = false;
+    this.sessionActive = false;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+  }
+
+  send(payload) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    }
+  }
+
+  sendTelemetry(event) {
+    if (!this.sessionActive) return;
+    if (event === "audio_playback_start") {
+      if (this.audioStartedTelemetrySent) return;
+      this.audioStartedTelemetrySent = true;
+    }
+    this.send({ type: "telemetry", event, t_ms: performance.now() });
+  }
+
+  say() {
+    const text = input.value.trim();
+    if (!text || !this.connected || this.busy) return;
+    this.busy = true;
+    this.sessionActive = true;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+    this.send({ type: "say", text });
+  }
+
+  renderLoop(timestamp) {
+    resizeCanvasToDisplaySize(canvas);
+    Avatar.drawAvatar(ctx, this.pose, canvas.width, canvas.height, { background: true });
+
+    if (this.lastTick) {
+      const fpsInstant = 1000 / Math.max(1, timestamp - this.lastTick);
+      this.fps = this.fps ? this.fps * 0.9 + fpsInstant * 0.1 : fpsInstant;
+      hudFps.textContent = `${Math.round(this.fps)} fps`;
+    }
+    this.lastTick = timestamp;
+    requestAnimationFrame((t) => this.renderLoop(t));
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
-  const canvas = document.getElementById("avatar");
-  const client = new VisualActorClient({
-    canvas,
-    badge: document.getElementById("badge"),
-    metrics: document.getElementById("metrics"),
-  });
-  const input = document.getElementById("text");
-  const btn = document.getElementById("say");
-  const fire = () => { if (input.value.trim()) client.say(input.value.trim()); };
-  btn.addEventListener("click", fire);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") fire(); });
+  new VisualActorClient();
 });

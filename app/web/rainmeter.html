@@ -7,18 +7,17 @@
   <link rel="stylesheet" href="/static/rainmeter.css" />
 </head>
 <body>
-  <canvas id="avatar" width="480" height="640"></canvas>
+  <canvas id="avatar" aria-label="Floating talking head"></canvas>
 
-  <div id="bar">
-    <input id="text" type="text" placeholder="Say something…" />
-    <button id="say">Speak</button>
+  <div id="offline-card" role="status" aria-live="polite">
+    <div>
+      <div class="offline-title">Server offline</div>
+      <div class="offline-copy">The avatar will reconnect automatically.</div>
+    </div>
+    <button id="reconnect" type="button">Reconnect</button>
   </div>
 
-  <div id="offline">
-    <div>Visual Actor server is offline.</div>
-    <button id="reconnect">Reconnect</button>
-  </div>
-
+  <script src="/static/renderer.js"></script>
   <script src="/static/rainmeter.js"></script>
 </body>
 </html>
