@@ -50,6 +50,233 @@ function formatMs(value) {
   return `${Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1)} ms`;
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function smoothStep01(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function mixPose(dst, a, b, t) {
+  const u = 1 - t;
+  const keys = Avatar.BLEND_KEYS;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    dst[key] = a[key] * u + b[key] * t;
+  }
+  return dst;
+}
+
+class IdleAnimator {
+  constructor(basePose) {
+    this.basePose = basePose;
+    this.idlePose = Avatar.createIdlePose();
+    this.seed = (Math.random() * 0x7fffffff) | 0;
+    this.phaseA = this.nextPhase();
+    this.phaseB = this.nextPhase();
+    this.phaseC = this.nextPhase();
+    this.phaseD = this.nextPhase();
+    this.phaseE = this.nextPhase();
+    this.phaseF = this.nextPhase();
+    this.phaseG = this.nextPhase();
+    this.nextBlinkAt = 0;
+    this.blinkStartAt = 0;
+    this.blinkCount = 0;
+    this.blinking = false;
+    this.gazeState = "hold";
+    this.gazeStartAt = 0;
+    this.gazeEndAt = 0;
+    this.gazeHoldUntil = 0;
+    this.gazeRestUntil = 0;
+    this.gazeFromX = 0;
+    this.gazeFromY = 0;
+    this.gazeTargetX = 0;
+    this.gazeTargetY = 0;
+    this.gazeCurrentX = 0;
+    this.gazeCurrentY = 0;
+    this.gazeMoveDuration = 160;
+    this.gazeHoldDuration = 280;
+    this.idlePose.headYaw = 0;
+    this.idlePose.headPitch = 0;
+    this.idlePose.headRoll = 0;
+    this.scheduleNextBlink(performance.now());
+    this.scheduleNextGaze(performance.now(), true);
+  }
+
+  nextPhase() {
+    this.seed ^= this.seed << 13;
+    this.seed ^= this.seed >>> 17;
+    this.seed ^= this.seed << 5;
+    return ((this.seed >>> 0) / 0xffffffff) * Math.PI * 2;
+  }
+
+  rand() {
+    this.seed ^= this.seed << 13;
+    this.seed ^= this.seed >>> 17;
+    this.seed ^= this.seed << 5;
+    return (this.seed >>> 0) / 0xffffffff;
+  }
+
+  range(min, max) {
+    return lerp(min, max, this.rand());
+  }
+
+  scheduleNextBlink(now) {
+    this.nextBlinkAt = now + this.range(2100, 5600);
+    this.blinkCount = this.rand() < 0.22 ? 2 : 1;
+    this.blinking = false;
+    this.blinkStartAt = 0;
+  }
+
+  scheduleNextGaze(now, immediate = false) {
+    const amplitude = this.rand() < 0.08 ? 0.11 : 0.07;
+    this.gazeFromX = immediate ? this.gazeCurrentX : this.gazeTargetX;
+    this.gazeFromY = immediate ? this.gazeCurrentY : this.gazeTargetY;
+    this.gazeTargetX = (this.rand() * 2 - 1) * amplitude;
+    this.gazeTargetY = (this.rand() * 2 - 1) * (amplitude * 0.65);
+    this.gazeMoveDuration = this.range(90, 150);
+    this.gazeHoldDuration = this.range(220, 980);
+    this.gazeStartAt = now + this.range(180, 520);
+    this.gazeEndAt = this.gazeStartAt + this.gazeMoveDuration;
+    this.gazeHoldUntil = this.gazeEndAt + this.gazeHoldDuration;
+    this.gazeRestUntil = this.gazeHoldUntil + this.range(120, 380);
+    this.gazeState = "hold";
+  }
+
+  updateBlink(now) {
+    if (!this.blinking && now >= this.nextBlinkAt) {
+      this.blinking = true;
+      this.blinkStartAt = now;
+    }
+
+    if (!this.blinking) {
+      return 0;
+    }
+
+    const closeMs = 62;
+    const holdMs = 28;
+    const openMs = 110;
+    const elapsed = now - this.blinkStartAt;
+    const total = closeMs + holdMs + openMs;
+
+    if (elapsed <= closeMs) {
+      return smoothStep01(elapsed / closeMs);
+    }
+    if (elapsed <= closeMs + holdMs) {
+      return 1;
+    }
+    if (elapsed <= total) {
+      return 1 - smoothStep01((elapsed - closeMs - holdMs) / openMs);
+    }
+
+    if (this.blinkCount > 1) {
+      this.blinkCount -= 1;
+      this.blinkStartAt = now + this.range(85, 180);
+      return 0;
+    }
+
+    this.scheduleNextBlink(now);
+    return 0;
+  }
+
+  updateGaze(now) {
+    if (this.gazeState === "hold") {
+      if (now < this.gazeStartAt) {
+        this.gazeCurrentX = 0;
+        this.gazeCurrentY = 0;
+        return;
+      }
+      this.gazeState = "move";
+      this.gazeCurrentX = this.gazeFromX;
+      this.gazeCurrentY = this.gazeFromY;
+    }
+
+    if (this.gazeState === "move") {
+      const t = smoothStep01((now - this.gazeStartAt) / this.gazeMoveDuration);
+      this.gazeCurrentX = lerp(this.gazeFromX, this.gazeTargetX, t);
+      this.gazeCurrentY = lerp(this.gazeFromY, this.gazeTargetY, t);
+      if (now >= this.gazeEndAt) {
+        this.gazeState = "holdTarget";
+      }
+    }
+
+    if (this.gazeState === "holdTarget") {
+      this.gazeCurrentX = this.gazeTargetX;
+      this.gazeCurrentY = this.gazeTargetY;
+      if (now >= this.gazeHoldUntil) {
+        this.gazeState = "return";
+        this.gazeFromX = this.gazeCurrentX;
+        this.gazeFromY = this.gazeCurrentY;
+        this.gazeStartAt = now;
+        this.gazeEndAt = now + this.range(120, 200);
+      }
+    }
+
+    if (this.gazeState === "return") {
+      const t = smoothStep01((now - this.gazeStartAt) / Math.max(1, this.gazeEndAt - this.gazeStartAt));
+      this.gazeCurrentX = lerp(this.gazeFromX, 0, t);
+      this.gazeCurrentY = lerp(this.gazeFromY, 0, t);
+      if (now >= this.gazeEndAt) {
+        this.gazeState = "hold";
+        this.gazeFromX = this.gazeCurrentX = 0;
+        this.gazeFromY = this.gazeCurrentY = 0;
+        this.scheduleNextGaze(now, false);
+      }
+    }
+
+    return;
+  }
+
+  sample(now, out) {
+    Avatar.copyPose(out, this.basePose);
+
+    const t = now * 0.001;
+    const breath = 0.14 + 0.03 * Math.sin(t * 1.05 + this.phaseA) + 0.012 * Math.sin(t * 2.1 + this.phaseB);
+    const driftYaw = 0.85 * Math.sin(t * 0.18 + this.phaseC) + 0.35 * Math.sin(t * 0.37 + this.phaseD);
+    const driftPitch = 0.55 * Math.sin(t * 0.21 + this.phaseE) + 0.22 * Math.sin(t * 0.49 + this.phaseF);
+    const driftRoll = 0.32 * Math.sin(t * 0.15 + this.phaseG) + 0.12 * Math.sin(t * 0.32 + this.phaseA * 0.5);
+    const blink = this.updateBlink(now);
+    this.updateGaze(now);
+    const saccadeX = this.gazeCurrentX;
+    const saccadeY = this.gazeCurrentY;
+
+    out.breath = breath;
+    out.headYaw = driftYaw;
+    out.headPitch = driftPitch + breath * 0.45;
+    out.headRoll = driftRoll;
+
+    out.eyeBlinkLeft = blink;
+    out.eyeBlinkRight = blink;
+    out.eyeWideLeft = this.basePose.eyeWideLeft + 0.02 * Math.sin(t * 0.9 + this.phaseB);
+    out.eyeWideRight = this.basePose.eyeWideRight + 0.02 * Math.sin(t * 0.87 + this.phaseC);
+
+    const gazeX = saccadeX;
+    const gazeY = saccadeY;
+    out.eyeLookOutLeft = Math.max(0, gazeX);
+    out.eyeLookInLeft = Math.max(0, -gazeX);
+    out.eyeLookOutRight = Math.max(0, -gazeX);
+    out.eyeLookInRight = Math.max(0, gazeX);
+    out.eyeLookUpLeft = Math.max(0, gazeY);
+    out.eyeLookDownLeft = Math.max(0, -gazeY);
+    out.eyeLookUpRight = Math.max(0, gazeY);
+    out.eyeLookDownRight = Math.max(0, -gazeY);
+
+    out.browInnerUp = this.basePose.browInnerUp + 0.01 * Math.sin(t * 0.7 + this.phaseD);
+    out.browOuterUpLeft = this.basePose.browOuterUpLeft + 0.012 * Math.sin(t * 0.64 + this.phaseE);
+    out.browOuterUpRight = this.basePose.browOuterUpRight + 0.012 * Math.sin(t * 0.66 + this.phaseF);
+    out.browDownLeft = 0.01 * Math.max(0, Math.sin(t * 0.41 + this.phaseG));
+    out.browDownRight = 0.01 * Math.max(0, Math.sin(t * 0.39 + this.phaseA));
+
+    out.cheekSquintLeft = this.basePose.cheekSquintLeft + 0.015 * Math.max(0, Math.sin(t * 0.82 + this.phaseB));
+    out.cheekSquintRight = this.basePose.cheekSquintRight + 0.015 * Math.max(0, Math.sin(t * 0.85 + this.phaseC));
+    out.cheekPuff = this.basePose.cheekPuff + 0.01 * Math.max(0, Math.sin(t * 0.54 + this.phaseD));
+
+    return out;
+  }
+}
+
 function renderReport(report) {
   if (!report) {
     reportBody.innerHTML = '<tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>';
@@ -125,11 +352,18 @@ class AudioPlayer {
 
 class VisualActorClient {
   constructor() {
-    this.pose = Avatar.createIdlePose();
+    this.serverPose = Avatar.createIdlePose();
+    this.idleBasePose = Avatar.createIdlePose();
+    this.idlePose = Avatar.createIdlePose();
+    this.transitionPose = Avatar.createIdlePose();
+    this.renderPose = Avatar.createIdlePose();
+    this.idleAnimator = new IdleAnimator(this.idleBasePose);
     this.ws = null;
     this.connected = false;
     this.busy = false;
     this.sessionActive = false;
+    this.idleTransitionAt = 0;
+    this.idleTransitionMs = 420;
     this.firstFrameTelemetrySent = false;
     this.audioStartedTelemetrySent = false;
     this.provider = "—";
@@ -137,7 +371,6 @@ class VisualActorClient {
     this.fps = 0;
     this.lastTick = 0;
     this.audio = new AudioPlayer(() => this.sendTelemetry("audio_playback_start"));
-    this.audioFrameCount = 0;
 
     this.setStatus("connecting", "Connecting…", "Opening live socket…");
     renderReport(null);
@@ -152,6 +385,11 @@ class VisualActorClient {
     window.addEventListener("resize", () => resizeCanvasToDisplaySize(canvas));
     this.connect();
     requestAnimationFrame((t) => this.renderLoop(t));
+  }
+
+  beginIdleTransition(now) {
+    Avatar.copyPose(this.transitionPose, this.renderPose);
+    this.idleTransitionAt = now;
   }
 
   setStatus(state, text, hint) {
@@ -197,7 +435,7 @@ class VisualActorClient {
 
     this.ws.onclose = () => {
       this.connected = false;
-      this.finishSession();
+      this.finishSession(performance.now());
       this.setStatus("disconnected", "Disconnected", "Reconnecting…");
       this.updateSpeakButton();
       this.scheduleReconnect();
@@ -213,7 +451,7 @@ class VisualActorClient {
       const msg = JSON.parse(event.data);
       switch (msg.type) {
         case "frame":
-          Avatar.copyPose(this.pose, msg.blendshapes);
+          Avatar.copyPose(this.serverPose, msg.blendshapes);
           if (this.sessionActive && !this.firstFrameTelemetrySent) {
             this.firstFrameTelemetrySent = true;
             this.sendTelemetry("first_frame_displayed");
@@ -232,7 +470,7 @@ class VisualActorClient {
             this.updateProviderLabels();
           }
           renderReport(msg);
-          this.finishSession();
+          this.finishSession(performance.now());
           this.setStatus("ready", "Ready", "Live stream connected.");
           this.updateSpeakButton();
           break;
@@ -249,7 +487,8 @@ class VisualActorClient {
     };
   }
 
-  finishSession() {
+  finishSession(now = performance.now()) {
+    this.beginIdleTransition(now);
     this.busy = false;
     this.sessionActive = false;
     this.firstFrameTelemetrySent = false;
@@ -278,6 +517,7 @@ class VisualActorClient {
     if (!text || !this.connected || this.busy) return;
     this.busy = true;
     this.sessionActive = true;
+    this.idleTransitionAt = 0;
     this.firstFrameTelemetrySent = false;
     this.audioStartedTelemetrySent = false;
     this.audio.reset();
@@ -287,7 +527,20 @@ class VisualActorClient {
 
   renderLoop(timestamp) {
     resizeCanvasToDisplaySize(canvas);
-    Avatar.drawAvatar(ctx, this.pose, canvas.width, canvas.height, { background: true });
+    const now = performance.now();
+    const idlePose = this.idleAnimator.sample(now, this.idlePose);
+    if (this.busy || this.sessionActive) {
+      Avatar.copyPose(this.renderPose, this.serverPose);
+    } else if (this.idleTransitionAt) {
+      const t = Math.min(1, (now - this.idleTransitionAt) / this.idleTransitionMs);
+      mixPose(this.renderPose, this.transitionPose, idlePose, smoothStep01(t));
+      if (t >= 1) {
+        this.idleTransitionAt = 0;
+      }
+    } else {
+      Avatar.copyPose(this.renderPose, idlePose);
+    }
+    Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
 
     if (this.lastTick) {
       const fpsInstant = 1000 / Math.max(1, timestamp - this.lastTick);

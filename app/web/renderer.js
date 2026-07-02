@@ -188,10 +188,38 @@ const VisualActorRenderer = (() => {
     fillEllipse(ctx, W * 0.20, shoulderY + H * 0.01, W * 0.13, H * 0.03);
   }
 
-  function drawHead(ctx, W, H, state, breath) {
-    const { headRx, headRy, jawOpen, smile, frown, press, pucker, funnel, stretch } = state;
-    const cx = 0;
-    const cy = 0;
+  function drawHead(
+    ctx,
+    headRx,
+    headRy,
+    jawOpen,
+    smile,
+    frown,
+    press,
+    pucker,
+    funnel,
+    stretch,
+    leftBlink,
+    rightBlink,
+    leftWide,
+    rightWide,
+    leftLookOut,
+    leftLookIn,
+    leftLookUp,
+    leftLookDown,
+    rightLookIn,
+    rightLookOut,
+    rightLookUp,
+    rightLookDown,
+    browInnerUp,
+    browOuterUpLeft,
+    browOuterUpRight,
+    browDownLeft,
+    browDownRight,
+    cheekSquint,
+    cheekPuff,
+    breath,
+  ) {
     const skinShadow = "#c89176";
     const skinLight = "#f2cdb7";
     const skinCore = "#e8baa1";
@@ -209,6 +237,14 @@ const VisualActorRenderer = (() => {
     ctx.ellipse(0, -headRy * 0.08, headRx * 1.04, headRy * 1.07, -0.04, 0, TAU);
     ctx.fill();
 
+    const topHighlight = ctx.createLinearGradient(-headRx * 0.18, -headRy * 0.95, headRx * 0.16, -headRy * 0.08);
+    topHighlight.addColorStop(0, rgba("#ffffff", 0.10));
+    topHighlight.addColorStop(1, rgba("#ffffff", 0));
+    ctx.fillStyle = topHighlight;
+    ctx.beginPath();
+    ctx.ellipse(-headRx * 0.05, -headRy * 0.58, headRx * 0.74, headRy * 0.42, -0.12, 0, TAU);
+    ctx.fill();
+
     // Ears.
     ctx.fillStyle = skinShadow;
     fillEllipse(ctx, -headRx * 0.92, -headRy * 0.02, headRx * 0.12, headRy * 0.21);
@@ -220,19 +256,27 @@ const VisualActorRenderer = (() => {
     ctx.ellipse(0, 0, headRx, headRy, 0, 0, TAU);
     ctx.fill();
 
-    ctx.fillStyle = rgba("#ffffff", 0.10);
-    fillEllipse(ctx, -headRx * 0.22, -headRy * 0.30, headRx * 0.74, headRy * 0.84);
-    ctx.fillStyle = rgba("#9b6555", 0.10 + smile * 0.04);
-    fillEllipse(ctx, headRx * 0.22, headRy * 0.22, headRx * 0.72, headRy * 0.84);
+    const faceShine = ctx.createRadialGradient(-headRx * 0.12, -headRy * 0.28, headRx * 0.10, 0, -headRy * 0.20, headRx * 0.92);
+    faceShine.addColorStop(0, rgba("#ffffff", 0.14));
+    faceShine.addColorStop(0.38, rgba("#ffffff", 0.05));
+    faceShine.addColorStop(1, rgba("#ffffff", 0));
+    ctx.fillStyle = faceShine;
+    ctx.fillRect(-headRx, -headRy, headRx * 2, headRy * 2);
+
+    ctx.fillStyle = rgba("#ffffff", 0.08);
+    fillEllipse(ctx, -headRx * 0.25, -headRy * 0.34, headRx * 0.56, headRy * 0.56);
+    ctx.fillStyle = rgba("#c87f6d", 0.09 + smile * 0.035 + cheekSquint * 0.02);
+    fillEllipse(ctx, headRx * 0.28, headRy * 0.28, headRx * 0.62, headRy * 0.58);
+    ctx.fillStyle = rgba("#b06f61", 0.05 + cheekPuff * 0.04);
+    fillEllipse(ctx, 0, headRy * 0.38, headRx * 0.45, headRy * 0.28);
 
     // Neck.
-    const neck = ctx.createLinearGradient(-headRx * 0.15, headRy * 0.55, headRx * 0.22, headRy * 0.95);
-    neck.addColorStop(0, skinCore);
-    neck.addColorStop(1, skinShadow);
-    ctx.fillStyle = neck;
+    ctx.fillStyle = "#d8a38d";
     ctx.beginPath();
     ctx.roundRect(-headRx * 0.17, headRy * 0.63, headRx * 0.34, headRy * 0.36, headRx * 0.05);
     ctx.fill();
+    ctx.fillStyle = rgba("#8d5d52", 0.10);
+    fillEllipse(ctx, 0, headRy * 0.96, headRx * 0.20, headRy * 0.08);
 
     // Jaw and chin shading.
     ctx.fillStyle = rgba("#9b6555", 0.18);
@@ -263,10 +307,10 @@ const VisualActorRenderer = (() => {
       ctx,
       -headRx * 0.40,
       -headRy * 0.12,
-      state.leftEye.blink,
-      state.leftEye.wide,
-      state.leftGaze.x,
-      state.leftGaze.y,
+      leftBlink,
+      leftWide,
+      leftLookOut - leftLookIn + (rightLookOut - rightLookIn) * 0.14,
+      leftLookUp - leftLookDown + (rightLookUp - rightLookDown) * 0.14,
       headRx,
       headRy,
       skinCore,
@@ -276,10 +320,10 @@ const VisualActorRenderer = (() => {
       ctx,
       headRx * 0.40,
       -headRy * 0.12,
-      state.rightEye.blink,
-      state.rightEye.wide,
-      state.rightGaze.x,
-      state.rightGaze.y,
+      rightBlink,
+      rightWide,
+      rightLookIn - rightLookOut + (leftLookIn - leftLookOut) * 0.14,
+      rightLookUp - rightLookDown + (leftLookUp - leftLookDown) * 0.14,
       headRx,
       headRy,
       skinCore,
@@ -292,9 +336,9 @@ const VisualActorRenderer = (() => {
       -headRx * 0.42,
       -headRy * 0.33,
       -0.08,
-      state.leftBrow.innerUp,
-      state.leftBrow.outerUp,
-      state.leftBrow.down,
+      browInnerUp,
+      browOuterUpLeft,
+      browDownLeft,
       hairDark,
       headRx,
       headRy,
@@ -304,9 +348,9 @@ const VisualActorRenderer = (() => {
       headRx * 0.42,
       -headRy * 0.33,
       0.08,
-      state.rightBrow.innerUp,
-      state.rightBrow.outerUp,
-      state.rightBrow.down,
+      browInnerUp,
+      browOuterUpRight,
+      browDownRight,
       hairDark,
       headRx,
       headRy,
@@ -323,8 +367,8 @@ const VisualActorRenderer = (() => {
       headRx,
       headRy,
       smile,
-      state.cheekSquint,
-      state.puff,
+      cheekSquint,
+      cheekPuff,
       breath,
     );
 
@@ -346,9 +390,9 @@ const VisualActorRenderer = (() => {
   }
 
   function drawEye(ctx, x, y, blink, wide, gazeXInput, gazeYInput, headRx, headRy, skinTone, shadowTone) {
-    const open = clamp((1 - blink * 0.98) * (0.98 + wide * 0.52), 0.04, 1.28);
-    const rx = headRx * 0.20;
-    const ry = headRy * 0.09 * open;
+    const open = clamp((1 - blink * 0.98) * (0.92 + wide * 0.58), 0.02, 1.22);
+    const rx = headRx * 0.17;
+    const ry = headRy * 0.055 * open;
     const gazeX = clamp(gazeXInput * rx * 0.24, -rx * 0.22, rx * 0.22);
     const gazeY = clamp(-gazeYInput * ry * 0.26, -ry * 0.22, ry * 0.22);
 
@@ -359,42 +403,44 @@ const VisualActorRenderer = (() => {
     // Sclera.
     ctx.fillStyle = "#f5f1ec";
     ctx.beginPath();
-    ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.ellipse(x, y + ry * 0.06, rx, ry, 0, 0, TAU);
     ctx.fill();
 
     // Upper and lower lids.
     ctx.strokeStyle = rgba(shadowTone, 0.72);
-    ctx.lineWidth = headRx * 0.02;
+    ctx.lineWidth = headRx * 0.016;
     ctx.beginPath();
-    ctx.ellipse(x, y + headRy * 0.004, rx * 1.02, ry * 0.95, 0, Math.PI * 1.02, Math.PI * 1.98);
+    ctx.ellipse(x, y + headRy * 0.004, rx * 1.02, ry * 0.82, 0.08, Math.PI * 1.04, Math.PI * 1.94);
     ctx.stroke();
     ctx.strokeStyle = rgba(skinTone, 0.42);
     ctx.beginPath();
-    ctx.ellipse(x, y + headRy * 0.014, rx * 1.00, ry * 0.82, 0, 0.03, Math.PI - 0.03);
+    ctx.ellipse(x, y + headRy * 0.014, rx * 1.00, ry * 0.72, -0.02, 0.04, Math.PI - 0.04);
     ctx.stroke();
 
     // Iris.
-    const irisR = ry * 0.95;
+    const irisR = Math.max(1, ry * 0.82);
     const irisX = x + gazeX;
     const irisY = y + gazeY;
-    ctx.fillStyle = "#315d7d";
+    ctx.fillStyle = "#35657f";
     fillCircle(ctx, irisX, irisY, irisR);
     ctx.fillStyle = "#0c111a";
-    fillCircle(ctx, irisX, irisY, irisR * 0.40);
+    fillCircle(ctx, irisX, irisY, irisR * 0.35);
     ctx.fillStyle = "rgba(255,255,255,0.95)";
-    fillCircle(ctx, irisX - irisR * 0.30, irisY - irisR * 0.28, irisR * 0.13);
+    fillCircle(ctx, irisX - irisR * 0.28, irisY - irisR * 0.30, irisR * 0.10);
+    ctx.fillStyle = rgba("#ffffff", 0.08);
+    fillEllipse(ctx, x, y - ry * 0.18, rx * 0.58, ry * 0.18);
 
     // Closed eyelid on blink.
     if (blink > 0.14) {
-      const lidH = ry * (1.35 + blink * 0.85);
+      const lidH = ry * (1.08 + blink * 0.70);
       ctx.fillStyle = rgba(skinTone, 0.96);
       ctx.beginPath();
-      ctx.roundRect(x - rx * 1.10, y - lidH * 0.52, rx * 2.20, lidH, rx * 0.38);
+      ctx.roundRect(x - rx * 1.05, y - lidH * 0.52, rx * 2.10, lidH, rx * 0.34);
       ctx.fill();
       ctx.strokeStyle = rgba(shadowTone, 0.32);
-      ctx.lineWidth = headRx * 0.014;
+      ctx.lineWidth = headRx * 0.011;
       ctx.beginPath();
-      ctx.ellipse(x, y, rx * 0.98, ry * 0.20, 0, 0, TAU);
+      ctx.ellipse(x, y, rx * 0.94, ry * 0.16, 0, 0, TAU);
       ctx.stroke();
     }
   }
@@ -402,7 +448,7 @@ const VisualActorRenderer = (() => {
   function drawBrow(ctx, x, y, tilt, innerUp, outerUp, down, hairTone, headRx, headRy) {
     const lift = (outerUp + innerUp - down) * headRy * 0.11;
     ctx.strokeStyle = hairTone;
-    ctx.lineWidth = headRx * 0.085;
+    ctx.lineWidth = headRx * 0.075;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
@@ -410,7 +456,7 @@ const VisualActorRenderer = (() => {
     ctx.quadraticCurveTo(x, y - headRy * 0.03 + lift + tilt * headRy * 0.12, x + headRx * 0.16, y + lift + tilt * headRy * 0.06);
     ctx.stroke();
     ctx.strokeStyle = rgba("#ffffff", 0.08);
-    ctx.lineWidth = headRx * 0.02;
+    ctx.lineWidth = headRx * 0.014;
     ctx.beginPath();
     ctx.moveTo(x - headRx * 0.13, y + lift - headRy * 0.02);
     ctx.quadraticCurveTo(x, y - headRy * 0.06 + lift, x + headRx * 0.12, y + lift + headRy * 0.008);
@@ -507,32 +553,23 @@ const VisualActorRenderer = (() => {
     const funnel = state.mouthFunnel || 0;
     const stretch = ((state.mouthStretchLeft || 0) + (state.mouthStretchRight || 0)) * 0.5;
     const press = ((state.mouthPressLeft || 0) + (state.mouthPressRight || 0)) * 0.5;
-    const leftEye = {
-      blink: state.eyeBlinkLeft || 0,
-      wide: state.eyeWideLeft || 0,
-    };
-    const rightEye = {
-      blink: state.eyeBlinkRight || 0,
-      wide: state.eyeWideRight || 0,
-    };
-    const leftGaze = {
-      x: ((state.eyeLookOutLeft || 0) - (state.eyeLookInLeft || 0)) + ((state.eyeLookOutRight || 0) - (state.eyeLookInRight || 0)) * 0.14,
-      y: ((state.eyeLookUpLeft || 0) - (state.eyeLookDownLeft || 0)) + ((state.eyeLookUpRight || 0) - (state.eyeLookDownRight || 0)) * 0.14,
-    };
-    const rightGaze = {
-      x: ((state.eyeLookInRight || 0) - (state.eyeLookOutRight || 0)) + ((state.eyeLookInLeft || 0) - (state.eyeLookOutLeft || 0)) * 0.14,
-      y: ((state.eyeLookUpRight || 0) - (state.eyeLookDownRight || 0)) + ((state.eyeLookUpLeft || 0) - (state.eyeLookDownLeft || 0)) * 0.14,
-    };
-    const leftBrow = {
-      innerUp: state.browInnerUp || 0,
-      outerUp: state.browOuterUpLeft || 0,
-      down: state.browDownLeft || 0,
-    };
-    const rightBrow = {
-      innerUp: state.browInnerUp || 0,
-      outerUp: state.browOuterUpRight || 0,
-      down: state.browDownRight || 0,
-    };
+    const eyeBlinkLeft = state.eyeBlinkLeft || 0;
+    const eyeBlinkRight = state.eyeBlinkRight || 0;
+    const eyeWideLeft = state.eyeWideLeft || 0;
+    const eyeWideRight = state.eyeWideRight || 0;
+    const eyeLookOutLeft = state.eyeLookOutLeft || 0;
+    const eyeLookInLeft = state.eyeLookInLeft || 0;
+    const eyeLookUpLeft = state.eyeLookUpLeft || 0;
+    const eyeLookDownLeft = state.eyeLookDownLeft || 0;
+    const eyeLookInRight = state.eyeLookInRight || 0;
+    const eyeLookOutRight = state.eyeLookOutRight || 0;
+    const eyeLookUpRight = state.eyeLookUpRight || 0;
+    const eyeLookDownRight = state.eyeLookDownRight || 0;
+    const browInnerUp = state.browInnerUp || 0;
+    const browOuterUpLeft = state.browOuterUpLeft || 0;
+    const browOuterUpRight = state.browOuterUpRight || 0;
+    const browDownLeft = state.browDownLeft || 0;
+    const browDownRight = state.browDownRight || 0;
     const cheekSquint = ((state.cheekSquintLeft || 0) + (state.cheekSquintRight || 0)) * 0.5;
     const cheekPuff = state.cheekPuff || 0;
 
@@ -551,27 +588,38 @@ const VisualActorRenderer = (() => {
 
     drawShoulders(ctx, W, H, breath, smile, cheekSquint + cheekPuff);
 
-    drawHead(ctx, W, H, {
-      cx,
-      cy,
+    drawHead(
+      ctx,
       headRx,
       headRy,
-      jawOpen: state.jawOpen || 0,
+      state.jawOpen || 0,
       smile,
       frown,
       press,
       pucker,
       funnel,
       stretch,
-      leftEye,
-      rightEye,
-      leftGaze,
-      rightGaze,
-      leftBrow,
-      rightBrow,
+      eyeBlinkLeft,
+      eyeBlinkRight,
+      eyeWideLeft,
+      eyeWideRight,
+      eyeLookOutLeft,
+      eyeLookInLeft,
+      eyeLookUpLeft,
+      eyeLookDownLeft,
+      eyeLookInRight,
+      eyeLookOutRight,
+      eyeLookUpRight,
+      eyeLookDownRight,
+      browInnerUp,
+      browOuterUpLeft,
+      browOuterUpRight,
+      browDownLeft,
+      browDownRight,
       cheekSquint,
-      puff: cheekPuff,
-    }, breath);
+      cheekPuff,
+      breath,
+    );
 
     ctx.restore();
   }
