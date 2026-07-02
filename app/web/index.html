@@ -13,6 +13,10 @@
       <p class="eyebrow">Realtime voice avatar</p>
       <h1>Visual Actor</h1>
       <p class="hero-copy">Type a line and watch a procedural avatar speak in sync with streamed frames and audio, entirely on canvas.</p>
+      <div class="mode-toggle" role="tablist" aria-label="Stage mode">
+        <button id="mode-face" type="button" class="mode-button" aria-pressed="true">Face</button>
+        <button id="mode-reactor" type="button" class="mode-button" aria-pressed="false">Arc Reactor</button>
+      </div>
     </header>
 
     <main class="layout">
@@ -73,6 +77,7 @@
   </div>
 
   <script src="/static/renderer.js"></script>
+  <script src="/static/arcreactor.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 "use strict";
 
 const Avatar = window.VisualActorAvatar;
+const ArcReactor = window.VisualActorArcReactor;
 const canvas = document.getElementById("avatar");
 const ctx = canvas.getContext("2d");
 const statusPill = document.getElementById("status-pill");
@@ -12,6 +13,8 @@ const verdictPill = document.getElementById("verdict-pill");
 const reportBody = document.getElementById("report-body");
 const input = document.getElementById("text");
 const speakButton = document.getElementById("say");
+const modeFaceButton = document.getElementById("mode-face");
+const modeReactorButton = document.getElementById("mode-reactor");
 
 function decodePcmBase64(b64) {
   const bin = atob(b64);
@@ -313,15 +316,33 @@ function renderReport(report) {
 class AudioPlayer {
   constructor(onStart) {
     this.ctx = null;
+    this.analyser = null;
     this.nextTime = 0;
     this.started = false;
     this.onStart = onStart;
+    this.freqData = new Uint8Array(0);
+    this.timeData = new Uint8Array(0);
+    this.visualData = {
+      frequency: this.freqData,
+      timeDomain: this.timeData,
+      level: 0,
+      peak: 0,
+      active: false,
+    };
   }
 
   ensure(sampleRate) {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
       this.nextTime = this.ctx.currentTime;
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.analyser.smoothingTimeConstant = 0.84;
+      this.analyser.connect(this.ctx.destination);
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      this.timeData = new Uint8Array(this.analyser.fftSize);
+      this.visualData.frequency = this.freqData;
+      this.visualData.timeDomain = this.timeData;
     }
   }
 
@@ -334,7 +355,8 @@ class AudioPlayer {
     buffer.copyToChannel(f32, 0);
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.ctx.destination);
+    source.connect(this.analyser || this.ctx.destination);
+    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
     const start = Math.max(this.ctx.currentTime, this.nextTime);
     source.start(start);
     this.nextTime = start + buffer.duration;
@@ -342,6 +364,30 @@ class AudioPlayer {
       this.started = true;
       if (this.onStart) this.onStart();
     }
+  }
+
+  sample() {
+    if (!this.analyser) {
+      this.visualData.level = 0;
+      this.visualData.peak = 0;
+      this.visualData.active = false;
+      return this.visualData;
+    }
+
+    this.analyser.getByteFrequencyData(this.freqData);
+    this.analyser.getByteTimeDomainData(this.timeData);
+    let sum = 0;
+    let peak = 0;
+    for (let i = 0; i < this.freqData.length; i++) {
+      const value = this.freqData[i];
+      sum += value;
+      if (value > peak) peak = value;
+    }
+    const level = this.freqData.length ? sum / (this.freqData.length * 255) : 0;
+    this.visualData.level = level;
+    this.visualData.peak = peak / 255;
+    this.visualData.active = level > 0.02 || this.visualData.peak > 0.03;
+    return this.visualData;
   }
 
   reset() {
@@ -370,14 +416,26 @@ class VisualActorClient {
     this.reconnectTimer = 0;
     this.fps = 0;
     this.lastTick = 0;
+    this.visualMode = "face";
+    this.reactorState = ArcReactor.createState();
     this.audio = new AudioPlayer(() => this.sendTelemetry("audio_playback_start"));
+
+    try {
+      const storedMode = window.localStorage.getItem("visual-actor-stage-mode");
+      if (storedMode === "face" || storedMode === "reactor") this.visualMode = storedMode;
+    } catch (_) {
+      this.visualMode = "face";
+    }
 
     this.setStatus("connecting", "Connecting…", "Opening live socket…");
     renderReport(null);
     this.updateProviderLabels();
     this.updateSpeakButton();
+    this.updateModeButtons();
 
     speakButton.addEventListener("click", () => this.say());
+    modeFaceButton.addEventListener("click", () => this.setVisualMode("face"));
+    modeReactorButton.addEventListener("click", () => this.setVisualMode("reactor"));
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") this.say();
     });
@@ -390,6 +448,23 @@ class VisualActorClient {
   beginIdleTransition(now) {
     Avatar.copyPose(this.transitionPose, this.renderPose);
     this.idleTransitionAt = now;
+  }
+
+  setVisualMode(mode) {
+    if (mode !== "face" && mode !== "reactor") return;
+    this.visualMode = mode;
+    this.updateModeButtons();
+    try {
+      window.localStorage.setItem("visual-actor-stage-mode", mode);
+    } catch (_) {
+      // ignore storage errors
+    }
+  }
+
+  updateModeButtons() {
+    const faceActive = this.visualMode === "face";
+    modeFaceButton.setAttribute("aria-pressed", faceActive ? "true" : "false");
+    modeReactorButton.setAttribute("aria-pressed", faceActive ? "false" : "true");
   }
 
   setStatus(state, text, hint) {
@@ -528,19 +603,24 @@ class VisualActorClient {
   renderLoop(timestamp) {
     resizeCanvasToDisplaySize(canvas);
     const now = performance.now();
-    const idlePose = this.idleAnimator.sample(now, this.idlePose);
-    if (this.busy || this.sessionActive) {
-      Avatar.copyPose(this.renderPose, this.serverPose);
-    } else if (this.idleTransitionAt) {
-      const t = Math.min(1, (now - this.idleTransitionAt) / this.idleTransitionMs);
-      mixPose(this.renderPose, this.transitionPose, idlePose, smoothStep01(t));
-      if (t >= 1) {
-        this.idleTransitionAt = 0;
-      }
+    const audioData = this.audio.sample();
+    if (this.visualMode === "reactor") {
+      ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, now, this.reactorState);
     } else {
-      Avatar.copyPose(this.renderPose, idlePose);
+      const idlePose = this.idleAnimator.sample(now, this.idlePose);
+      if (this.busy || this.sessionActive) {
+        Avatar.copyPose(this.renderPose, this.serverPose);
+      } else if (this.idleTransitionAt) {
+        const t = Math.min(1, (now - this.idleTransitionAt) / this.idleTransitionMs);
+        mixPose(this.renderPose, this.transitionPose, idlePose, smoothStep01(t));
+        if (t >= 1) {
+          this.idleTransitionAt = 0;
+        }
+      } else {
+        Avatar.copyPose(this.renderPose, idlePose);
+      }
+      Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
     }
-    Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
 
     if (this.lastTick) {
       const fpsInstant = 1000 / Math.max(1, timestamp - this.lastTick);
