@@ -114,16 +114,24 @@ class PiperProvider(TTSProvider):
             yield chunk
 
     async def _stream_piper(self, voice, text: str) -> AsyncIterator[AudioChunk]:
-        def _synth() -> np.ndarray:
+        def _synth() -> tuple[np.ndarray, int]:
             pcm_parts: list[np.ndarray] = []
-            for audio_bytes in voice.synthesize_stream_raw(text):
-                pcm_parts.append(np.frombuffer(audio_bytes, dtype="<i2").astype(np.float32) / 32768.0)
+            sr = self.sample_rate
+            if hasattr(voice, "synthesize_stream_raw"):  # piper-tts < 1.3
+                for audio_bytes in voice.synthesize_stream_raw(text):
+                    pcm_parts.append(
+                        np.frombuffer(audio_bytes, dtype="<i2").astype(np.float32) / 32768.0
+                    )
+                sr = getattr(getattr(voice, "config", None), "sample_rate", self.sample_rate)
+            else:  # piper-tts >= 1.3: synthesize() yields AudioChunk objects
+                for part in voice.synthesize(text):
+                    pcm_parts.append(np.asarray(part.audio_float_array, dtype=np.float32))
+                    sr = part.sample_rate
             if not pcm_parts:
-                return np.zeros(0, dtype=np.float32)
-            return np.concatenate(pcm_parts)
+                return np.zeros(0, dtype=np.float32), sr
+            return np.concatenate(pcm_parts), sr
 
-        pcm = await asyncio.to_thread(_synth)
-        sr = getattr(getattr(voice, "config", None), "sample_rate", self.sample_rate)
+        pcm, sr = await asyncio.to_thread(_synth)
         async for chunk in self._emit_chunks(pcm, sr):
             yield chunk
 
