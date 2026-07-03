@@ -33,7 +33,8 @@ def test_resources_exist():
 
 def test_webview_host_loads_server_url():
     txt = (SKIN / "WebViewHost.ini").read_text(encoding="utf-8")
-    assert "Meter=WebView2" in txt
+    assert "Measure=Plugin" in txt
+    assert "Plugin=WebView2" in txt
     assert "#ServerURL#" in txt
 
 

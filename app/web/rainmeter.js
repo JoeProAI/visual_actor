@@ -1,6 +1,8 @@
 "use strict";
 
 const ArcReactor = window.VisualActorArcReactor;
+const Avatar = window.VisualActorAvatar;
+const WIDGET_MODE = new URLSearchParams(location.search).get("mode") === "face" ? "face" : "reactor";
 const canvas = document.getElementById("avatar");
 const ctx = canvas.getContext("2d");
 const offlineCard = document.getElementById("offline-card");
@@ -103,6 +105,7 @@ class RainmeterClient {
     this.connected = false;
     this.reconnectTimer = 0;
     this.reactorState = ArcReactor.createState();
+    this.serverPose = Avatar.createIdlePose();
     this.audio = new AudioPlayer();
 
     reconnectButton.addEventListener("click", () => this.connect());
@@ -149,6 +152,8 @@ class RainmeterClient {
       const msg = JSON.parse(event.data);
       if (msg.type === "audio") {
         this.audio.play(decodePcmBase64(msg.pcm), msg.sample_rate);
+      } else if (msg.type === "frame" && msg.blendshapes) {
+        Avatar.copyPose(this.serverPose, msg.blendshapes);
       }
     };
   }
@@ -156,7 +161,11 @@ class RainmeterClient {
   renderLoop(timestamp) {
     resizeCanvasToDisplaySize(canvas);
     const audioData = this.audio.sample();
-    ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, performance.now(), this.reactorState);
+    if (WIDGET_MODE === "face") {
+      Avatar.drawAvatar(ctx, this.serverPose, canvas.width, canvas.height, { background: false });
+    } else {
+      ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, performance.now(), this.reactorState);
+    }
     requestAnimationFrame((t) => this.renderLoop(t));
   }
 }

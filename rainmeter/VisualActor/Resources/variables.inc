@@ -5,6 +5,9 @@
 ServerURL=http://127.0.0.1:8765/rainmeter
 ServerHealthURL=http://127.0.0.1:8765/health
 
+; Widget visual mode: "reactor" (arc-reactor visualizer) or "face" (avatar)
+WidgetMode=reactor
+
 ; Geometry
 Width=480
 Height=640
@@ -18,9 +21,10 @@ ClickThrough=0
 AlwaysOnTop=1
 Draggable=1
 
-; Refresh cadence for status polling (ms)
-RefreshMs=16
-StatusPollMs=2000
+; Refresh cadence for status polling (ms). The WebView renders itself at full
+; frame rate; the skin Update only drives meters and the health poll.
+RefreshMs=1000
+StatusPollMs=3000
 
 ; Path to the bundled PowerShell helpers (resolved at runtime by Rainmeter)
 ServerStart=#@#launch_server.ps1
