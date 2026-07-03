@@ -20,7 +20,11 @@
 #>
 param(
     [string]$SkinRoot = (Join-Path $PSScriptRoot "..\rainmeter\VisualActor"),
-    [string]$OutFile  = (Join-Path $PSScriptRoot "..\VisualActor.rmskin")
+    [string]$OutFile  = (Join-Path $PSScriptRoot "..\VisualActor.rmskin"),
+    # WebView2 Rainmeter plugin release (bundled into the package so the skin
+    # installs its own dependency). https://github.com/NSTechBytes/WebView2
+    [string]$PluginZipUrl = "https://github.com/NSTechBytes/WebView2/releases/download/v1.0.0/WebView2_v1.0.0_x64_x86_dll.zip",
+    [switch]$SkipPlugin
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,6 +45,31 @@ Get-ChildItem -Path $SkinRoot -Force | ForEach-Object {
         Copy-Item $_.FullName (Join-Path $stage "RMSKIN.ini") -Force
     } else {
         Copy-Item $_.FullName (Join-Path $skinsDir $_.Name) -Recurse -Force
+    }
+}
+
+# 1b. Bundle the WebView2 Rainmeter plugin (Plugins/32bit + Plugins/64bit) so
+#     the Skin Installer deploys the DLL the skin depends on.
+if (-not $SkipPlugin) {
+    $pluginZip = Join-Path $stage "webview2_plugin.zip"
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $PluginZipUrl -OutFile $pluginZip
+        $pluginTmp = Join-Path $stage "plugin_tmp"
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($pluginZip, $pluginTmp)
+        $map = @{ "x64" = "64bit"; "x32" = "32bit" }
+        foreach ($arch in $map.Keys) {
+            $dll = Join-Path $pluginTmp "$arch\WebView2.dll"
+            if (Test-Path $dll) {
+                $dest = Join-Path $stage "Plugins\$($map[$arch])"
+                New-Item -ItemType Directory -Force -Path $dest | Out-Null
+                Copy-Item $dll (Join-Path $dest "WebView2.dll") -Force
+            }
+        }
+        Remove-Item $pluginTmp -Recurse -Force
+    } catch {
+        Write-Warning "Could not bundle WebView2 plugin ($_). Building without it; install the plugin manually from $PluginZipUrl"
+    } finally {
+        if (Test-Path $pluginZip) { Remove-Item $pluginZip -Force }
     }
 }
 

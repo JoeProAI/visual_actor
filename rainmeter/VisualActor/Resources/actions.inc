@@ -2,10 +2,10 @@
 ; Referenced by meters via e.g. LeftMouseUpAction=[!Execute "#ToggleClickThrough#"]
 
 [Variables]
-; ---- Server control (PowerShell helpers shipped in the skin) ----
-LaunchServer=["#@#launch_server.ps1"]
-StopServer=["#@#stop_server.ps1"]
-CheckServer=["#@#check_server.ps1"]
+; ---- Server control (RunCommand measures defined in VisualActor.ini) ----
+LaunchServer=[!CommandMeasure MeasureLaunch "Run" "VisualActor"]
+StopServer=[!CommandMeasure MeasureStop "Run" "VisualActor"]
+CheckServer=[!CommandMeasure MeasureServer "Run" "VisualActor"]
 
 ; ---- Settings / config skin ----
 OpenSettings=[!ActivateConfig "VisualActor" "Settings.ini"]

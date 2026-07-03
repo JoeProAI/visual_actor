@@ -3,6 +3,7 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 websockets>=12.0
 numpy>=1.26
+pygltflib>=1.16
 scipy>=1.11
 pydantic>=2.6
 pyyaml>=6.0
@@ -12,6 +13,10 @@ soundfile>=0.12
 psutil>=5.9
 rich>=13.7
 python-dotenv>=1.0
+
+# Conversation voice input (mic -> text). CPU int8 whisper; optional at runtime,
+# the /stt endpoint returns 503 with guidance when absent.
+faster-whisper>=1.0
 
 # Optional heavy / hardware-specific runtimes. The system lazy-imports these and
 # degrades to deterministic CPU paths when they are absent, so install only what

@@ -3,29 +3,110 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#070b14" />
   <title>Visual Actor — Live Demo</title>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
-  <header>
-    <h1>Visual Actor</h1>
-    <p>Type text → streaming voice + perfectly synced talking avatar (local, &lt;100ms target)</p>
-  </header>
+  <div class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">Realtime voice avatar</p>
+      <h1>Visual Actor</h1>
+      <p class="hero-copy">Type a line and watch a procedural avatar speak in sync with streamed frames and audio, entirely on canvas.</p>
+      <div class="mode-toggle" role="tablist" aria-label="Stage mode">
+        <button id="mode-face" type="button" class="mode-button" aria-pressed="true">Face</button>
+        <button id="mode-reactor" type="button" class="mode-button" aria-pressed="false">Arc Reactor</button>
+      </div>
+    </header>
 
-  <div id="stage">
-    <canvas id="avatar" width="480" height="640"></canvas>
-    <div id="rec-dot" title="live feed"></div>
-    <div id="badge">connecting…</div>
+    <main class="layout">
+      <section class="panel stage-panel">
+        <div class="stage-shell">
+          <canvas id="avatar" width="960" height="1280" aria-label="Live avatar feed"></canvas>
+          <canvas id="avatar3d" class="stage-3d" aria-hidden="true"></canvas>
+          <div class="stage-overlay">
+            <div class="stage-topline">
+              <div class="status-group">
+                <span id="rec-dot" aria-hidden="true"></span>
+                <span id="status-pill" class="status-pill" data-state="connecting">Connecting…</span>
+              </div>
+              <span id="provider-badge" class="provider-badge">provider: —</span>
+            </div>
+            <div id="hud" class="hud">
+              <span id="hud-fps">0 fps</span>
+              <span class="hud-sep">•</span>
+              <span id="hud-provider">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="stack">
+        <section class="panel chat-panel">
+          <div class="report-head">
+            <div>
+              <h2>Conversation</h2>
+              <p>Talk with the actor — replies are spoken live.</p>
+            </div>
+            <span id="chat-pill" class="verdict-pill neutral">Idle</span>
+          </div>
+          <div id="chat-log" class="chat-log" aria-live="polite">
+            <p class="chat-empty">Say hi — type below or hold the mic.</p>
+          </div>
+          <div class="input-row">
+            <button id="mic" type="button" class="mic-button" aria-pressed="false" title="Toggle microphone">🎤</button>
+            <input id="chat-text" type="text" placeholder="Say something to her…" autocomplete="off" />
+            <button id="chat-send" type="button">Send</button>
+          </div>
+          <p id="chat-hint" class="connection-hint"></p>
+        </section>
+
+        <section class="panel control-panel">
+          <label class="label" for="text">Or make her say an exact line</label>
+          <div class="input-row">
+            <input id="text" type="text" placeholder="Type something for the actor to say…" value="Hello! I am your local real time visual actor." />
+            <button id="say" type="button">Speak</button>
+          </div>
+          <p id="connection-hint" class="connection-hint">Opening live socket…</p>
+        </section>
+
+        <section class="panel report-panel">
+          <div class="report-head">
+            <div>
+              <h2>Latency report</h2>
+              <p>Measured on the client and graded against the budget.</p>
+            </div>
+            <span id="verdict-pill" class="verdict-pill neutral">Waiting</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th scope="col">Metric</th>
+                <th scope="col">Value</th>
+                <th scope="col">Target</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody id="report-body">
+              <tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </aside>
+    </main>
   </div>
 
-  <div class="controls">
-    <input id="text" type="text" placeholder="Type something for the actor to say…"
-           value="Hello! I am your local real time visual actor." />
-    <button id="say">Speak</button>
-  </div>
-
-  <pre id="metrics">Latency report will appear here after the first utterance.</pre>
-
+  <script src="/static/renderer.js"></script>
+  <script src="/static/arcreactor.js"></script>
+  <script src="/static/avatar3d.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

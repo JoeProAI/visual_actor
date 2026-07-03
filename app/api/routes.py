@@ -10,8 +10,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from fastapi import APIRouter, Request, WebSocket
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+
 from app.api.websocket import handle_websocket
+from app.audio.stt import STTUnavailableError, transcribe_wav
 from app.avatar.renderer import encode_jpeg
+from app.llm.conversation import Conversation
 from app.server import VisualActorEngine
 
 WEB_DIR = Path(__file__).parent.parent / "web"
@@ -21,10 +26,7 @@ def _read(name: str) -> str:
     return (WEB_DIR / name).read_text(encoding="utf-8")
 
 
-def build_router(engine: VisualActorEngine):
-    from fastapi import APIRouter, WebSocket
-    from fastapi.responses import HTMLResponse, StreamingResponse
-
+def build_router(engine: VisualActorEngine) -> APIRouter:
     router = APIRouter()
 
     @router.get("/", response_class=HTMLResponse)
@@ -46,7 +48,22 @@ def build_router(engine: VisualActorEngine):
             "width": engine.config.actor.width,
             "height": engine.config.actor.height,
             "renderer": engine.config.actor.renderer,
+            "conversation": Conversation.available(),
         }
+
+    @router.post("/stt")
+    async def stt(request: Request):
+        """Transcribe a WAV request body (mic capture from the browser)."""
+        wav = await request.body()
+        if not wav:
+            return JSONResponse({"error": "empty audio"}, status_code=400)
+        try:
+            text = await transcribe_wav(wav)
+        except STTUnavailableError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+        except Exception as exc:
+            return JSONResponse({"error": f"transcription failed: {exc}"}, status_code=500)
+        return {"text": text}
 
     @router.get("/stream")
     async def stream() -> StreamingResponse:

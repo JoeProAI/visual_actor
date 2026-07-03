@@ -1,203 +1,886 @@
-// Visual Actor web client.
-// Renders the avatar from streamed blendshape state on a <canvas> (the "live
-// camera feed") and plays streamed PCM audio via WebAudio, keeping both aligned
-// to the server's shared clock. Reports browser display telemetry back.
-
 "use strict";
 
-// ---- Canvas avatar renderer (mirrors app/avatar/renderer.py) -------------- //
-function drawAvatar(ctx, bs, W, H) {
-  const dx = (bs.headYaw / 30) * W * 0.04;
-  const dy = (bs.headPitch / 30) * H * 0.03 - (bs.breath || 0) * H * 0.01;
+const Avatar = window.VisualActorAvatar;
+const ArcReactor = window.VisualActorArcReactor;
+const Avatar3D = window.VisualActorAvatar3D;
+const canvas = document.getElementById("avatar");
+const canvas3d = document.getElementById("avatar3d");
+const ctx = canvas.getContext("2d");
+const statusPill = document.getElementById("status-pill");
+const connectionHint = document.getElementById("connection-hint");
+const providerBadge = document.getElementById("provider-badge");
+const hudFps = document.getElementById("hud-fps");
+const hudProvider = document.getElementById("hud-provider");
+const verdictPill = document.getElementById("verdict-pill");
+const reportBody = document.getElementById("report-body");
+const input = document.getElementById("text");
+const speakButton = document.getElementById("say");
+const chatLog = document.getElementById("chat-log");
+const chatInput = document.getElementById("chat-text");
+const chatSendButton = document.getElementById("chat-send");
+const chatPill = document.getElementById("chat-pill");
+const chatHint = document.getElementById("chat-hint");
+const micButton = document.getElementById("mic");
+const modeFaceButton = document.getElementById("mode-face");
+const modeReactorButton = document.getElementById("mode-reactor");
 
-  ctx.fillStyle = "#12131c";
-  ctx.fillRect(0, 0, W, H);
-
-  // Head
-  const cx = 0.5 * W + dx, cy = 0.46 * H + dy;
-  ctx.fillStyle = "#e8c6ae";
-  ellipse(ctx, cx, cy, 0.30 * W, 0.34 * H);
-
-  // Eyes
-  drawEye(ctx, 0.38 * W + dx, 0.40 * H + dy, bs.eyeBlinkLeft, bs.eyeWideLeft,
-          (bs.eyeLookOutLeft || 0) - (bs.eyeLookInLeft || 0),
-          (bs.eyeLookUpLeft || 0) - (bs.eyeLookDownLeft || 0), W, H);
-  drawEye(ctx, 0.62 * W + dx, 0.40 * H + dy, bs.eyeBlinkRight, bs.eyeWideRight,
-          (bs.eyeLookInRight || 0) - (bs.eyeLookOutRight || 0),
-          (bs.eyeLookUpRight || 0) - (bs.eyeLookDownRight || 0), W, H);
-
-  // Brows
-  ctx.fillStyle = "#5a463c";
-  const browL = (bs.browOuterUpLeft || 0) + (bs.browInnerUp || 0);
-  const browR = (bs.browOuterUpRight || 0) + (bs.browInnerUp || 0);
-  ellipse(ctx, 0.38 * W + dx, 0.40 * H + dy - H * (0.04 + 0.02 * browL), 0.06 * W, 0.008 * H);
-  ellipse(ctx, 0.62 * W + dx, 0.40 * H + dy - H * (0.04 + 0.02 * browR), 0.06 * W, 0.008 * H);
-
-  // Mouth
-  const smile = ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) * 0.5;
-  const widthScale = 1 + 0.4 * smile - 0.5 * (bs.mouthPucker || 0) - 0.3 * (bs.mouthFunnel || 0);
-  const mrx = Math.max(2, 0.10 * W * widthScale);
-  const mry = Math.max(1, H * (0.012 + 0.09 * (bs.jawOpen || 0)));
-  const mx = 0.5 * W + dx, my = 0.66 * H + dy - smile * H * 0.01;
-  ctx.fillStyle = "#78323c";
-  ellipse(ctx, mx, my, mrx, mry);
-  if ((bs.jawOpen || 0) > 0.1) {
-    ctx.fillStyle = "#3c141e";
-    ellipse(ctx, mx, my, mrx * 0.8, mry * 0.7);
-  }
-}
-
-function ellipse(ctx, cx, cy, rx, ry) {
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawEye(ctx, ex, ey, blink, wide, lookX, lookY, W, H) {
-  const open = (1 - (blink || 0)) * (1 + 0.4 * (wide || 0));
-  const ery = Math.max(0.5, H * 0.022 * open), erx = W * 0.05;
-  ctx.fillStyle = "#fafafc";
-  ellipse(ctx, ex, ey, erx, ery);
-  if (open > 0.15) {
-    ctx.fillStyle = "#28283c";
-    ellipse(ctx, ex + lookX * erx * 0.5, ey - lookY * ery * 0.6, erx * 0.4, ery * 0.6);
-  }
-}
-
-// ---- Audio playback (scheduled, gapless) ---------------------------------- //
-class AudioPlayer {
-  constructor() {
-    this.ctx = null;
-    this.nextTime = 0;
-    this.started = false;
-    this.onStart = null;
-  }
-  ensure(sampleRate) {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
-      this.nextTime = this.ctx.currentTime;
-    }
-  }
-  play(int16, sampleRate) {
-    this.ensure(sampleRate);
-    const f32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
-    if (f32.length === 0) return;
-    const buf = this.ctx.createBuffer(1, f32.length, sampleRate);
-    buf.copyToChannel(f32, 0);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(this.ctx.destination);
-    const t = Math.max(this.ctx.currentTime, this.nextTime);
-    src.start(t);
-    this.nextTime = t + buf.duration;
-    if (!this.started) {
-      this.started = true;
-      if (this.onStart) this.onStart(performance.now());
-    }
-  }
-  reset() { this.started = false; if (this.ctx) this.nextTime = this.ctx.currentTime; }
-}
-
-function b64ToInt16(b64) {
+function decodePcmBase64(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Int16Array(bytes.buffer, 0, bytes.length >> 1);
 }
 
-// ---- Client controller ----------------------------------------------------- //
-class VisualActorClient {
-  constructor({ canvas, badge, metrics, onProvider }) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
-    this.badge = badge;
-    this.metrics = metrics;
-    this.onProvider = onProvider;
-    this.audio = new AudioPlayer();
-    this.firstFrameDisplayed = false;
-    this.ws = null;
-    this.connect();
-    // idle render so the face is visible before first utterance
-    this.lastBs = { jawOpen: 0.03 };
-    this.renderLoop();
+function resizeCanvasToDisplaySize(canvasEl) {
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvasEl.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (canvasEl.width !== width || canvasEl.height !== height) {
+    canvasEl.width = width;
+    canvasEl.height = height;
+    return true;
+  }
+  return false;
+}
+
+function metricLabel(name) {
+  const labels = {
+    total_first_visible_frame_ms: "First visible frame",
+    first_audio_chunk_ms: "First audio chunk",
+    first_mouth_motion_ms: "First mouth motion",
+    audio_mouth_sync_offset_ms: "Audio↔mouth sync",
+  };
+  return labels[name] || name.replaceAll("_", " ");
+}
+
+function formatMs(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1)} ms`;
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function smoothStep01(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function mixPose(dst, a, b, t) {
+  const u = 1 - t;
+  const keys = Avatar.BLEND_KEYS;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    dst[key] = a[key] * u + b[key] * t;
+  }
+  return dst;
+}
+
+class IdleAnimator {
+  constructor(basePose) {
+    this.basePose = basePose;
+    this.idlePose = Avatar.createIdlePose();
+    this.seed = (Math.random() * 0x7fffffff) | 0;
+    this.phaseA = this.nextPhase();
+    this.phaseB = this.nextPhase();
+    this.phaseC = this.nextPhase();
+    this.phaseD = this.nextPhase();
+    this.phaseE = this.nextPhase();
+    this.phaseF = this.nextPhase();
+    this.phaseG = this.nextPhase();
+    this.nextBlinkAt = 0;
+    this.blinkStartAt = 0;
+    this.blinkCount = 0;
+    this.blinking = false;
+    this.gazeState = "hold";
+    this.gazeStartAt = 0;
+    this.gazeEndAt = 0;
+    this.gazeHoldUntil = 0;
+    this.gazeRestUntil = 0;
+    this.gazeFromX = 0;
+    this.gazeFromY = 0;
+    this.gazeTargetX = 0;
+    this.gazeTargetY = 0;
+    this.gazeCurrentX = 0;
+    this.gazeCurrentY = 0;
+    this.gazeMoveDuration = 160;
+    this.gazeHoldDuration = 280;
+    this.idlePose.headYaw = 0;
+    this.idlePose.headPitch = 0;
+    this.idlePose.headRoll = 0;
+    this.scheduleNextBlink(performance.now());
+    this.scheduleNextGaze(performance.now(), true);
   }
 
-  connect() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.ws = new WebSocket(`${proto}://${location.host}/ws`);
-    this.ws.onopen = () => this.setBadge("ready", "var(--accent)");
-    this.ws.onclose = () => { this.setBadge("disconnected", "#ff6b6b"); setTimeout(() => this.connect(), 1500); };
-    this.ws.onerror = () => this.setBadge("error", "#ff6b6b");
-    this.ws.onmessage = (e) => this.onMessage(JSON.parse(e.data));
+  nextPhase() {
+    this.seed ^= this.seed << 13;
+    this.seed ^= this.seed >>> 17;
+    this.seed ^= this.seed << 5;
+    return ((this.seed >>> 0) / 0xffffffff) * Math.PI * 2;
   }
 
-  setBadge(text, color) {
-    if (this.badge) { this.badge.textContent = text; this.badge.style.color = color; }
+  rand() {
+    this.seed ^= this.seed << 13;
+    this.seed ^= this.seed >>> 17;
+    this.seed ^= this.seed << 5;
+    return (this.seed >>> 0) / 0xffffffff;
   }
 
-  onMessage(msg) {
-    switch (msg.type) {
-      case "frame":
-        this.lastBs = msg.blendshapes;
-        if (!this.firstFrameDisplayed) {
-          this.firstFrameDisplayed = true;
-          this.send({ type: "telemetry", event: "first_frame_displayed", t_ms: performance.now() });
-        }
-        break;
-      case "audio":
-        this.audio.play(b64ToInt16(msg.pcm), msg.sample_rate);
-        break;
-      case "provider":
-        this.setBadge("voice: " + msg.name, "var(--accent)");
-        if (this.onProvider) this.onProvider(msg.name);
-        break;
-      case "report":
-        this.renderReport(msg);
-        break;
-      case "error":
-        if (this.metrics) this.metrics.textContent = "Error: " + msg.message;
-        break;
+  range(min, max) {
+    return lerp(min, max, this.rand());
+  }
+
+  scheduleNextBlink(now) {
+    this.nextBlinkAt = now + this.range(2100, 5600);
+    this.blinkCount = this.rand() < 0.22 ? 2 : 1;
+    this.blinking = false;
+    this.blinkStartAt = 0;
+  }
+
+  scheduleNextGaze(now, immediate = false) {
+    const amplitude = this.rand() < 0.08 ? 0.11 : 0.07;
+    this.gazeFromX = immediate ? this.gazeCurrentX : this.gazeTargetX;
+    this.gazeFromY = immediate ? this.gazeCurrentY : this.gazeTargetY;
+    this.gazeTargetX = (this.rand() * 2 - 1) * amplitude;
+    this.gazeTargetY = (this.rand() * 2 - 1) * (amplitude * 0.65);
+    this.gazeMoveDuration = this.range(90, 150);
+    this.gazeHoldDuration = this.range(220, 980);
+    this.gazeStartAt = now + this.range(180, 520);
+    this.gazeEndAt = this.gazeStartAt + this.gazeMoveDuration;
+    this.gazeHoldUntil = this.gazeEndAt + this.gazeHoldDuration;
+    this.gazeRestUntil = this.gazeHoldUntil + this.range(120, 380);
+    this.gazeState = "hold";
+  }
+
+  updateBlink(now) {
+    if (!this.blinking && now >= this.nextBlinkAt) {
+      this.blinking = true;
+      this.blinkStartAt = now;
     }
+
+    if (!this.blinking) {
+      return 0;
+    }
+
+    const closeMs = 62;
+    const holdMs = 28;
+    const openMs = 110;
+    const elapsed = now - this.blinkStartAt;
+    const total = closeMs + holdMs + openMs;
+
+    if (elapsed <= closeMs) {
+      return smoothStep01(elapsed / closeMs);
+    }
+    if (elapsed <= closeMs + holdMs) {
+      return 1;
+    }
+    if (elapsed <= total) {
+      return 1 - smoothStep01((elapsed - closeMs - holdMs) / openMs);
+    }
+
+    if (this.blinkCount > 1) {
+      this.blinkCount -= 1;
+      this.blinkStartAt = now + this.range(85, 180);
+      return 0;
+    }
+
+    this.scheduleNextBlink(now);
+    return 0;
   }
 
-  send(obj) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(obj)); }
+  updateGaze(now) {
+    if (this.gazeState === "hold") {
+      if (now < this.gazeStartAt) {
+        this.gazeCurrentX = 0;
+        this.gazeCurrentY = 0;
+        return;
+      }
+      this.gazeState = "move";
+      this.gazeCurrentX = this.gazeFromX;
+      this.gazeCurrentY = this.gazeFromY;
+    }
 
-  say(text) {
-    this.firstFrameDisplayed = false;
-    this.audio.reset();
-    this.send({ type: "say", text });
+    if (this.gazeState === "move") {
+      const t = smoothStep01((now - this.gazeStartAt) / this.gazeMoveDuration);
+      this.gazeCurrentX = lerp(this.gazeFromX, this.gazeTargetX, t);
+      this.gazeCurrentY = lerp(this.gazeFromY, this.gazeTargetY, t);
+      if (now >= this.gazeEndAt) {
+        this.gazeState = "holdTarget";
+      }
+    }
+
+    if (this.gazeState === "holdTarget") {
+      this.gazeCurrentX = this.gazeTargetX;
+      this.gazeCurrentY = this.gazeTargetY;
+      if (now >= this.gazeHoldUntil) {
+        this.gazeState = "return";
+        this.gazeFromX = this.gazeCurrentX;
+        this.gazeFromY = this.gazeCurrentY;
+        this.gazeStartAt = now;
+        this.gazeEndAt = now + this.range(120, 200);
+      }
+    }
+
+    if (this.gazeState === "return") {
+      const t = smoothStep01((now - this.gazeStartAt) / Math.max(1, this.gazeEndAt - this.gazeStartAt));
+      this.gazeCurrentX = lerp(this.gazeFromX, 0, t);
+      this.gazeCurrentY = lerp(this.gazeFromY, 0, t);
+      if (now >= this.gazeEndAt) {
+        this.gazeState = "hold";
+        this.gazeFromX = this.gazeCurrentX = 0;
+        this.gazeFromY = this.gazeCurrentY = 0;
+        this.scheduleNextGaze(now, false);
+      }
+    }
+
+    return;
   }
 
-  renderReport(msg) {
-    if (!this.metrics) return;
-    const g = msg.grade;
-    const rows = Object.entries(g).map(([k, v]) => {
-      const val = v.value == null ? "n/a" : v.value.toFixed(2);
-      const cls = v.pass === false ? "fail" : "pass";
-      return `<span class="${cls}">${k.padEnd(34)} ${String(val).padStart(8)} / ${v.target}  ${v.pass === false ? "FAIL" : "PASS"}</span>`;
-    });
-    const verdict = msg.passed ? `<span class="pass">VERDICT: PASS</span>` : `<span class="fail">VERDICT: FAIL</span>`;
-    this.metrics.innerHTML = `provider: ${msg.provider}\n` + rows.join("\n") + "\n" + verdict;
-  }
+  sample(now, out) {
+    Avatar.copyPose(out, this.basePose);
 
-  renderLoop() {
-    drawAvatar(this.ctx, this.lastBs || {}, this.canvas.width, this.canvas.height);
-    requestAnimationFrame(() => this.renderLoop());
+    const t = now * 0.001;
+    const breath = 0.14 + 0.03 * Math.sin(t * 1.05 + this.phaseA) + 0.012 * Math.sin(t * 2.1 + this.phaseB);
+    const driftYaw = 0.85 * Math.sin(t * 0.18 + this.phaseC) + 0.35 * Math.sin(t * 0.37 + this.phaseD);
+    const driftPitch = 0.55 * Math.sin(t * 0.21 + this.phaseE) + 0.22 * Math.sin(t * 0.49 + this.phaseF);
+    const driftRoll = 0.32 * Math.sin(t * 0.15 + this.phaseG) + 0.12 * Math.sin(t * 0.32 + this.phaseA * 0.5);
+    const blink = this.updateBlink(now);
+    this.updateGaze(now);
+    const saccadeX = this.gazeCurrentX;
+    const saccadeY = this.gazeCurrentY;
+
+    out.breath = breath;
+    out.headYaw = driftYaw;
+    out.headPitch = driftPitch + breath * 0.45;
+    out.headRoll = driftRoll;
+
+    out.eyeBlinkLeft = blink;
+    out.eyeBlinkRight = blink;
+    out.eyeWideLeft = this.basePose.eyeWideLeft + 0.02 * Math.sin(t * 0.9 + this.phaseB);
+    out.eyeWideRight = this.basePose.eyeWideRight + 0.02 * Math.sin(t * 0.87 + this.phaseC);
+
+    const gazeX = saccadeX;
+    const gazeY = saccadeY;
+    out.eyeLookOutLeft = Math.max(0, gazeX);
+    out.eyeLookInLeft = Math.max(0, -gazeX);
+    out.eyeLookOutRight = Math.max(0, -gazeX);
+    out.eyeLookInRight = Math.max(0, gazeX);
+    out.eyeLookUpLeft = Math.max(0, gazeY);
+    out.eyeLookDownLeft = Math.max(0, -gazeY);
+    out.eyeLookUpRight = Math.max(0, gazeY);
+    out.eyeLookDownRight = Math.max(0, -gazeY);
+
+    out.browInnerUp = this.basePose.browInnerUp + 0.01 * Math.sin(t * 0.7 + this.phaseD);
+    out.browOuterUpLeft = this.basePose.browOuterUpLeft + 0.012 * Math.sin(t * 0.64 + this.phaseE);
+    out.browOuterUpRight = this.basePose.browOuterUpRight + 0.012 * Math.sin(t * 0.66 + this.phaseF);
+    out.browDownLeft = 0.01 * Math.max(0, Math.sin(t * 0.41 + this.phaseG));
+    out.browDownRight = 0.01 * Math.max(0, Math.sin(t * 0.39 + this.phaseA));
+
+    out.cheekSquintLeft = this.basePose.cheekSquintLeft + 0.015 * Math.max(0, Math.sin(t * 0.82 + this.phaseB));
+    out.cheekSquintRight = this.basePose.cheekSquintRight + 0.015 * Math.max(0, Math.sin(t * 0.85 + this.phaseC));
+    out.cheekPuff = this.basePose.cheekPuff + 0.01 * Math.max(0, Math.sin(t * 0.54 + this.phaseD));
+
+    return out;
   }
 }
 
-// ---- Bootstrap ------------------------------------------------------------- //
+function renderReport(report) {
+  if (!report) {
+    reportBody.innerHTML = '<tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>';
+    verdictPill.textContent = "Waiting";
+    verdictPill.dataset.state = "neutral";
+    verdictPill.className = "verdict-pill neutral";
+    return;
+  }
+
+  const grade = report?.grade || {};
+  const rows = [];
+  for (const [metric, item] of Object.entries(grade)) {
+    const state = item.pass === true ? "pass" : item.pass === false ? "fail" : "neutral";
+    const verdict = item.pass === true ? "PASS" : item.pass === false ? "FAIL" : "—";
+    rows.push(`
+      <tr class="${state}">
+        <th scope="row">${metricLabel(metric)}</th>
+        <td>${formatMs(item.value)}</td>
+        <td>${formatMs(item.target)}</td>
+        <td><span class="metric-pill ${state}">${verdict}</span></td>
+      </tr>
+    `);
+  }
+  reportBody.innerHTML = rows.length
+    ? rows.join("")
+    : '<tr class="empty"><td colspan="4">No timing report yet. Say a line to generate one.</td></tr>';
+
+  const passed = Boolean(report?.passed);
+  verdictPill.textContent = passed ? "PASS" : "FAIL";
+  verdictPill.dataset.state = passed ? "pass" : "fail";
+  verdictPill.className = `verdict-pill ${passed ? "pass" : "fail"}`;
+}
+
+class AudioPlayer {
+  constructor(onStart) {
+    this.ctx = null;
+    this.analyser = null;
+    this.nextTime = 0;
+    this.started = false;
+    this.onStart = onStart;
+    this.freqData = new Uint8Array(0);
+    this.timeData = new Uint8Array(0);
+    this.visualData = {
+      frequency: this.freqData,
+      timeDomain: this.timeData,
+      level: 0,
+      peak: 0,
+      active: false,
+    };
+  }
+
+  ensure(sampleRate) {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+      this.nextTime = this.ctx.currentTime;
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.analyser.smoothingTimeConstant = 0.84;
+      this.analyser.connect(this.ctx.destination);
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      this.timeData = new Uint8Array(this.analyser.fftSize);
+      this.visualData.frequency = this.freqData;
+      this.visualData.timeDomain = this.timeData;
+    }
+  }
+
+  play(int16, sampleRate) {
+    if (!int16.length) return;
+    this.ensure(sampleRate);
+    const f32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    const buffer = this.ctx.createBuffer(1, f32.length, sampleRate);
+    buffer.copyToChannel(f32, 0);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.analyser || this.ctx.destination);
+    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+    const start = Math.max(this.ctx.currentTime, this.nextTime);
+    source.start(start);
+    this.nextTime = start + buffer.duration;
+    if (!this.started) {
+      this.started = true;
+      if (this.onStart) this.onStart();
+    }
+  }
+
+  sample() {
+    if (!this.analyser) {
+      this.visualData.level = 0;
+      this.visualData.peak = 0;
+      this.visualData.active = false;
+      return this.visualData;
+    }
+
+    this.analyser.getByteFrequencyData(this.freqData);
+    this.analyser.getByteTimeDomainData(this.timeData);
+    let sum = 0;
+    let peak = 0;
+    for (let i = 0; i < this.freqData.length; i++) {
+      const value = this.freqData[i];
+      sum += value;
+      if (value > peak) peak = value;
+    }
+    const level = this.freqData.length ? sum / (this.freqData.length * 255) : 0;
+    this.visualData.level = level;
+    this.visualData.peak = peak / 255;
+    this.visualData.active = level > 0.02 || this.visualData.peak > 0.03;
+    return this.visualData;
+  }
+
+  reset() {
+    this.started = false;
+    if (this.ctx) this.nextTime = this.ctx.currentTime;
+  }
+
+  flush() {
+    // Barge-in: drop everything queued by tearing down the context.
+    if (this.ctx) {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+      this.analyser = null;
+    }
+    this.started = false;
+    this.visualData.level = 0;
+    this.visualData.peak = 0;
+    this.visualData.active = false;
+  }
+}
+
+function encodeWav(float32, sampleRate) {
+  const pcm = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length * 2, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, pcm.length * 2, true);
+  return new Blob([header, pcm.buffer], { type: "audio/wav" });
+}
+
+class MicRecorder {
+  constructor() {
+    this.stream = null;
+    this.ctx = null;
+    this.source = null;
+    this.processor = null;
+    this.chunks = [];
+    this.recording = false;
+  }
+
+  async start() {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.source = this.ctx.createMediaStreamSource(this.stream);
+    this.processor = this.ctx.createScriptProcessor(4096, 1, 1);
+    this.chunks = [];
+    this.processor.onaudioprocess = (event) => {
+      this.chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    };
+    this.source.connect(this.processor);
+    this.processor.connect(this.ctx.destination);
+    this.recording = true;
+  }
+
+  stop() {
+    this.recording = false;
+    if (this.processor) this.processor.disconnect();
+    if (this.source) this.source.disconnect();
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    const sampleRate = this.ctx ? this.ctx.sampleRate : 48000;
+    if (this.ctx) this.ctx.close().catch(() => {});
+    let total = 0;
+    for (const c of this.chunks) total += c.length;
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const c of this.chunks) {
+      merged.set(c, offset);
+      offset += c.length;
+    }
+    this.chunks = [];
+    this.processor = null;
+    this.source = null;
+    this.stream = null;
+    this.ctx = null;
+    return { samples: merged, sampleRate };
+  }
+}
+
+class VisualActorClient {
+  constructor() {
+    this.serverPose = Avatar.createIdlePose();
+    this.idleBasePose = Avatar.createIdlePose();
+    this.idlePose = Avatar.createIdlePose();
+    this.transitionPose = Avatar.createIdlePose();
+    this.renderPose = Avatar.createIdlePose();
+    this.idleAnimator = new IdleAnimator(this.idleBasePose);
+    this.ws = null;
+    this.connected = false;
+    this.busy = false;
+    this.sessionActive = false;
+    this.idleTransitionAt = 0;
+    this.idleTransitionMs = 420;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.provider = "—";
+    this.reconnectTimer = 0;
+    this.fps = 0;
+    this.lastTick = 0;
+    this.visualMode = "face";
+    this.reactorState = ArcReactor.createState();
+    this.viewer3d = null;
+    Avatar3D.load(canvas3d)
+      .then((viewer) => {
+        this.viewer3d = viewer;
+      })
+      .catch(() => {
+        this.viewer3d = null;
+      });
+    this.audio = new AudioPlayer(() => this.sendTelemetry("audio_playback_start"));
+
+    try {
+      const storedMode = window.localStorage.getItem("visual-actor-stage-mode");
+      if (storedMode === "face" || storedMode === "reactor") this.visualMode = storedMode;
+    } catch (_) {
+      this.visualMode = "face";
+    }
+
+    this.setStatus("connecting", "Connecting…", "Opening live socket…");
+    renderReport(null);
+    this.updateProviderLabels();
+    this.updateSpeakButton();
+    this.updateModeButtons();
+
+    speakButton.addEventListener("click", () => this.say());
+    modeFaceButton.addEventListener("click", () => this.setVisualMode("face"));
+    modeReactorButton.addEventListener("click", () => this.setVisualMode("reactor"));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.say();
+    });
+
+    this.mic = new MicRecorder();
+    this.transcribing = false;
+    this.chatBusy = false;
+    this.assistantBubble = null;
+    chatSendButton.addEventListener("click", () => this.sendChat());
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.sendChat();
+    });
+    micButton.addEventListener("click", () => this.toggleMic());
+
+    window.addEventListener("resize", () => resizeCanvasToDisplaySize(canvas));
+    this.connect();
+    requestAnimationFrame((t) => this.renderLoop(t));
+  }
+
+  beginIdleTransition(now) {
+    Avatar.copyPose(this.transitionPose, this.renderPose);
+    this.idleTransitionAt = now;
+  }
+
+  setVisualMode(mode) {
+    if (mode !== "face" && mode !== "reactor") return;
+    this.visualMode = mode;
+    this.updateModeButtons();
+    try {
+      window.localStorage.setItem("visual-actor-stage-mode", mode);
+    } catch (_) {
+      // ignore storage errors
+    }
+  }
+
+  updateModeButtons() {
+    const faceActive = this.visualMode === "face";
+    modeFaceButton.setAttribute("aria-pressed", faceActive ? "true" : "false");
+    modeReactorButton.setAttribute("aria-pressed", faceActive ? "false" : "true");
+  }
+
+  setStatus(state, text, hint) {
+    statusPill.dataset.state = state;
+    statusPill.textContent = text;
+    connectionHint.textContent = hint;
+  }
+
+  updateProviderLabels() {
+    providerBadge.textContent = `provider: ${this.provider}`;
+    hudProvider.textContent = this.provider;
+  }
+
+  updateSpeakButton() {
+    speakButton.disabled = !this.connected || this.busy;
+    speakButton.textContent = this.busy ? "Speaking…" : "Speak";
+    speakButton.dataset.state = this.busy ? "busy" : this.connected ? "ready" : "offline";
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = 0;
+      this.connect();
+    }, 1500);
+  }
+
+  connect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = 0;
+    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    this.setStatus("connecting", "Connecting…", "Opening live socket…");
+    this.ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    this.ws.onopen = () => {
+      this.connected = true;
+      this.setStatus("ready", "Ready", "Live stream connected.");
+      this.updateSpeakButton();
+    };
+
+    this.ws.onclose = () => {
+      this.connected = false;
+      this.finishSession(performance.now());
+      this.setStatus("disconnected", "Disconnected", "Reconnecting…");
+      this.updateSpeakButton();
+      this.scheduleReconnect();
+    };
+
+    this.ws.onerror = () => {
+      this.connected = false;
+      this.setStatus("disconnected", "Disconnected", "Connection error. Reconnecting…");
+      this.updateSpeakButton();
+    };
+
+    this.ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      switch (msg.type) {
+        case "frame":
+          Avatar.copyPose(this.serverPose, msg.blendshapes);
+          if (this.sessionActive && !this.firstFrameTelemetrySent) {
+            this.firstFrameTelemetrySent = true;
+            this.sendTelemetry("first_frame_displayed");
+          }
+          break;
+        case "audio":
+          this.audio.play(decodePcmBase64(msg.pcm), msg.sample_rate);
+          break;
+        case "provider":
+          this.provider = msg.name || "—";
+          this.updateProviderLabels();
+          break;
+        case "report":
+          if (msg.provider) {
+            this.provider = msg.provider;
+            this.updateProviderLabels();
+          }
+          renderReport(msg);
+          this.finishSession(performance.now());
+          this.setStatus("ready", "Ready", "Live stream connected.");
+          this.updateSpeakButton();
+          break;
+        case "chat_delta":
+          this.appendAssistantText(msg.text);
+          break;
+        case "chat_done":
+          this.assistantBubble = null;
+          this.setChatState("neutral", "Idle");
+          this.chatBusy = false;
+          this.finishSession(performance.now());
+          this.setStatus("ready", "Ready", "Live stream connected.");
+          break;
+        case "stopped":
+          this.assistantBubble = null;
+          this.setChatState("neutral", "Idle");
+          this.chatBusy = false;
+          this.finishSession(performance.now());
+          break;
+        case "pong":
+          break;
+        case "error":
+          if (this.chatBusy) {
+            this.chatBusy = false;
+            this.assistantBubble = null;
+            this.setChatState("fail", "Error");
+            chatHint.textContent = msg.message || "Conversation error";
+            this.finishSession(performance.now());
+            break;
+          }
+          this.setStatus("disconnected", "Disconnected", msg.message || "Server error");
+          this.finishSession();
+          this.updateSpeakButton();
+          break;
+        default:
+          break;
+      }
+    };
+  }
+
+  finishSession(now = performance.now()) {
+    this.beginIdleTransition(now);
+    this.busy = false;
+    this.sessionActive = false;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+  }
+
+  send(payload) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    }
+  }
+
+  sendTelemetry(event) {
+    if (!this.sessionActive) return;
+    if (event === "audio_playback_start") {
+      if (this.audioStartedTelemetrySent) return;
+      this.audioStartedTelemetrySent = true;
+    }
+    this.send({ type: "telemetry", event, t_ms: performance.now() });
+  }
+
+  setChatState(state, label) {
+    chatPill.textContent = label;
+    chatPill.className = `verdict-pill ${state}`;
+  }
+
+  appendChatMessage(role, text) {
+    const empty = chatLog.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    const bubble = document.createElement("div");
+    bubble.className = `chat-msg ${role}`;
+    bubble.textContent = text;
+    chatLog.appendChild(bubble);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return bubble;
+  }
+
+  appendAssistantText(text) {
+    if (!this.assistantBubble) {
+      this.assistantBubble = this.appendChatMessage("assistant", text);
+    } else {
+      this.assistantBubble.textContent += ` ${text}`;
+    }
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  bargeIn() {
+    if (this.busy || this.sessionActive || this.chatBusy) {
+      this.send({ type: "stop" });
+      this.audio.flush();
+      this.assistantBubble = null;
+    }
+  }
+
+  sendChat(textOverride) {
+    const text = (textOverride !== undefined ? textOverride : chatInput.value).trim();
+    if (!text || !this.connected) return;
+    this.bargeIn();
+    chatInput.value = "";
+    chatHint.textContent = "";
+    this.appendChatMessage("user", text);
+    this.assistantBubble = null;
+    this.chatBusy = true;
+    this.busy = true;
+    this.sessionActive = true;
+    this.idleTransitionAt = 0;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+    this.setChatState("neutral", "Thinking…");
+    this.send({ type: "chat", text });
+  }
+
+  async toggleMic() {
+    if (this.transcribing) return;
+    if (this.mic.recording) {
+      micButton.setAttribute("aria-pressed", "false");
+      micButton.classList.remove("recording");
+      const { samples, sampleRate } = this.mic.stop();
+      if (samples.length < sampleRate * 0.3) {
+        chatHint.textContent = "Too short — hold the mic a bit longer.";
+        return;
+      }
+      this.transcribing = true;
+      this.setChatState("neutral", "Transcribing…");
+      try {
+        const wav = encodeWav(samples, sampleRate);
+        const resp = await fetch("/stt", { method: "POST", body: wav, headers: { "Content-Type": "audio/wav" } });
+        const data = await resp.json();
+        if (!resp.ok) {
+          chatHint.textContent = data.error || "Transcription failed";
+          this.setChatState("fail", "STT error");
+          return;
+        }
+        if (!data.text) {
+          chatHint.textContent = "Didn't catch that — try again.";
+          this.setChatState("neutral", "Idle");
+          return;
+        }
+        this.sendChat(data.text);
+      } catch (err) {
+        chatHint.textContent = "Transcription request failed";
+        this.setChatState("fail", "STT error");
+      } finally {
+        this.transcribing = false;
+      }
+      return;
+    }
+    try {
+      this.bargeIn();
+      await this.mic.start();
+      micButton.setAttribute("aria-pressed", "true");
+      micButton.classList.add("recording");
+      this.setChatState("neutral", "Listening…");
+      chatHint.textContent = "Click the mic again when you're done talking.";
+    } catch (err) {
+      chatHint.textContent = "Microphone unavailable — check browser permissions.";
+      this.setChatState("fail", "No mic");
+    }
+  }
+
+  say() {
+    const text = input.value.trim();
+    if (!text || !this.connected || this.busy) return;
+    this.busy = true;
+    this.sessionActive = true;
+    this.idleTransitionAt = 0;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+    this.send({ type: "say", text });
+  }
+
+  renderLoop(timestamp) {
+    resizeCanvasToDisplaySize(canvas);
+    const now = performance.now();
+    const audioData = this.audio.sample();
+    const use3d = this.visualMode === "face" && this.viewer3d;
+    canvas3d.style.display = use3d ? "block" : "none";
+    if (this.visualMode === "reactor") {
+      ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, now, this.reactorState);
+    } else {
+      const idlePose = this.idleAnimator.sample(now, this.idlePose);
+      if (this.busy || this.sessionActive) {
+        Avatar.copyPose(this.renderPose, this.serverPose);
+      } else if (this.idleTransitionAt) {
+        const t = Math.min(1, (now - this.idleTransitionAt) / this.idleTransitionMs);
+        mixPose(this.renderPose, this.transitionPose, idlePose, smoothStep01(t));
+        if (t >= 1) {
+          this.idleTransitionAt = 0;
+        }
+      } else {
+        Avatar.copyPose(this.renderPose, idlePose);
+      }
+      if (use3d) {
+        this.viewer3d.resize(canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.viewer3d.render(this.renderPose, audioData.level, now);
+      } else {
+        Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
+      }
+    }
+
+    if (this.lastTick) {
+      const fpsInstant = 1000 / Math.max(1, timestamp - this.lastTick);
+      this.fps = this.fps ? this.fps * 0.9 + fpsInstant * 0.1 : fpsInstant;
+      hudFps.textContent = `${Math.round(this.fps)} fps`;
+    }
+    this.lastTick = timestamp;
+    requestAnimationFrame((t) => this.renderLoop(t));
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
-  const canvas = document.getElementById("avatar");
-  const client = new VisualActorClient({
-    canvas,
-    badge: document.getElementById("badge"),
-    metrics: document.getElementById("metrics"),
-  });
-  const input = document.getElementById("text");
-  const btn = document.getElementById("say");
-  const fire = () => { if (input.value.trim()) client.say(input.value.trim()); };
-  btn.addEventListener("click", fire);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") fire(); });
+  window.visualActorClient = new VisualActorClient();
 });
