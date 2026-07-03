@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Visual Actor — zero-prerequisite bootstrap for Windows.
+    Visual Actor - zero-prerequisite bootstrap for Windows.
 
 .DESCRIPTION
     Works on a bare Windows machine: no Git, no Python, no winget needed.
@@ -44,12 +44,12 @@ if (-not $havePython) {
     $pyExe = Join-Path $env:TEMP "python-installer.exe"
     Invoke-WebRequest "https://www.python.org/ftp/python/3.12.8/python-3.12.8-$pyArch.exe" -OutFile $pyExe
     if ((Get-FileHash $pyExe -Algorithm SHA256).Hash -ne $pyHash) {
-        throw "Python installer failed SHA-256 verification — download may be corrupted or tampered with. Install Python 3.12 manually from https://www.python.org/downloads/ and re-run."
+        throw "Python installer failed SHA-256 verification - download may be corrupted or tampered with. Install Python 3.12 manually from https://www.python.org/downloads/ and re-run."
     }
     Start-Process $pyExe -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_launcher=0" -Wait
     Refresh-Path
     if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-        throw "Python installed but not on PATH yet — close this window, open a new PowerShell, and re-run this script."
+        throw "Python installed but not on PATH yet - close this window, open a new PowerShell, and re-run this script."
     }
     Write-Host "  + Python installed" -ForegroundColor Green
 } else {
@@ -57,9 +57,12 @@ if (-not $havePython) {
 }
 
 Step "Downloading Visual Actor (no Git needed)"
-$dest = Join-Path (Get-Location) "visual_actor"
+$baseDir = (Get-Location).Path
+$winDirPrefix = $env:windir.TrimEnd('\') + '\'
+if ($baseDir -eq $env:windir -or $baseDir.StartsWith($winDirPrefix, [StringComparison]::OrdinalIgnoreCase)) { $baseDir = $HOME }
+$dest = Join-Path $baseDir "visual_actor"
 if (Test-Path (Join-Path $dest "install.ps1")) {
-    Write-Host "  + $dest already exists — using it" -ForegroundColor Green
+    Write-Host "  + $dest already exists - using it" -ForegroundColor Green
 } else {
     $zip = Join-Path $env:TEMP "visual_actor.zip"
     Invoke-WebRequest "https://codeload.github.com/JoeProAI/visual_actor/zip/refs/heads/base" -OutFile $zip
