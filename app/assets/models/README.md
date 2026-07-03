@@ -1,5 +1,17 @@
 # Local model assets
 
+## Tripo3D avatar head (realistic 3D face mode)
+
+Generate `avatar_head.glb` with the Tripo3D API and the web frontend will
+automatically switch the Face mode to a realistic 3D head rendered with
+three.js (falling back to the 2D portrait when the file is absent):
+
+```
+export TRIPO3D_API_KEY=...   # https://platform.tripo3d.ai/api-keys
+python scripts/generate_avatar_tripo.py
+```
+
+
 This directory holds **optional** local models. The system runs fully without
 them (deterministic CPU paths), but dropping models here unlocks higher-quality
 voices and rendering. Nothing here is required to pass the benchmark.

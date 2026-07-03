@@ -2,7 +2,9 @@
 
 const Avatar = window.VisualActorAvatar;
 const ArcReactor = window.VisualActorArcReactor;
+const Avatar3D = window.VisualActorAvatar3D;
 const canvas = document.getElementById("avatar");
+const canvas3d = document.getElementById("avatar3d");
 const ctx = canvas.getContext("2d");
 const statusPill = document.getElementById("status-pill");
 const connectionHint = document.getElementById("connection-hint");
@@ -418,6 +420,14 @@ class VisualActorClient {
     this.lastTick = 0;
     this.visualMode = "face";
     this.reactorState = ArcReactor.createState();
+    this.viewer3d = null;
+    Avatar3D.load(canvas3d)
+      .then((viewer) => {
+        this.viewer3d = viewer;
+      })
+      .catch(() => {
+        this.viewer3d = null;
+      });
     this.audio = new AudioPlayer(() => this.sendTelemetry("audio_playback_start"));
 
     try {
@@ -604,6 +614,8 @@ class VisualActorClient {
     resizeCanvasToDisplaySize(canvas);
     const now = performance.now();
     const audioData = this.audio.sample();
+    const use3d = this.visualMode === "face" && this.viewer3d;
+    canvas3d.style.display = use3d ? "block" : "none";
     if (this.visualMode === "reactor") {
       ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, now, this.reactorState);
     } else {
@@ -619,7 +631,13 @@ class VisualActorClient {
       } else {
         Avatar.copyPose(this.renderPose, idlePose);
       }
-      Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
+      if (use3d) {
+        this.viewer3d.resize(canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.viewer3d.render(this.renderPose, audioData.level, now);
+      } else {
+        Avatar.drawAvatar(ctx, this.renderPose, canvas.width, canvas.height, { background: true });
+      }
     }
 
     if (this.lastTick) {

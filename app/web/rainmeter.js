@@ -2,8 +2,10 @@
 
 const ArcReactor = window.VisualActorArcReactor;
 const Avatar = window.VisualActorAvatar;
+const Avatar3D = window.VisualActorAvatar3D;
 const WIDGET_MODE = new URLSearchParams(location.search).get("mode") === "face" ? "face" : "reactor";
 const canvas = document.getElementById("avatar");
+const canvas3d = document.getElementById("avatar3d");
 const ctx = canvas.getContext("2d");
 const offlineCard = document.getElementById("offline-card");
 const reconnectButton = document.getElementById("reconnect");
@@ -107,6 +109,16 @@ class RainmeterClient {
     this.reactorState = ArcReactor.createState();
     this.serverPose = Avatar.createIdlePose();
     this.audio = new AudioPlayer();
+    this.viewer3d = null;
+    if (WIDGET_MODE === "face") {
+      Avatar3D.load(canvas3d)
+        .then((viewer) => {
+          this.viewer3d = viewer;
+        })
+        .catch(() => {
+          this.viewer3d = null;
+        });
+    }
 
     reconnectButton.addEventListener("click", () => this.connect());
     window.addEventListener("resize", () => resizeCanvasToDisplaySize(canvas));
@@ -162,7 +174,14 @@ class RainmeterClient {
     resizeCanvasToDisplaySize(canvas);
     const audioData = this.audio.sample();
     if (WIDGET_MODE === "face") {
-      Avatar.drawAvatar(ctx, this.serverPose, canvas.width, canvas.height, { background: false });
+      canvas3d.style.display = this.viewer3d ? "block" : "none";
+      if (this.viewer3d) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.viewer3d.resize(canvas.width, canvas.height);
+        this.viewer3d.render(this.serverPose, audioData.level, performance.now());
+      } else {
+        Avatar.drawAvatar(ctx, this.serverPose, canvas.width, canvas.height, { background: false });
+      }
     } else {
       ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, performance.now(), this.reactorState);
     }

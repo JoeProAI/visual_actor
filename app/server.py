@@ -209,4 +209,6 @@ def create_app(engine: VisualActorEngine | None = None) -> FastAPI:
 
     web_dir = Path(__file__).parent / "web"
     app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+    models_dir = Path(__file__).parent / "assets" / "models"
+    app.mount("/models", StaticFiles(directory=str(models_dir)), name="models")
     return app

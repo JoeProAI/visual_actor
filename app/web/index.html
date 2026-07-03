@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#070b14" />
   <title>Visual Actor — Live Demo</title>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div class="app-shell">
@@ -23,6 +31,7 @@
       <section class="panel stage-panel">
         <div class="stage-shell">
           <canvas id="avatar" width="960" height="1280" aria-label="Live avatar feed"></canvas>
+          <canvas id="avatar3d" class="stage-3d" aria-hidden="true"></canvas>
           <div class="stage-overlay">
             <div class="stage-topline">
               <div class="status-group">
@@ -78,6 +87,7 @@
 
   <script src="/static/renderer.js"></script>
   <script src="/static/arcreactor.js"></script>
+  <script src="/static/avatar3d.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -5,9 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Visual Actor — Rainmeter Widget</title>
   <link rel="stylesheet" href="/static/rainmeter.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <canvas id="avatar" aria-label="Floating talking head"></canvas>
+  <canvas id="avatar3d" aria-hidden="true"></canvas>
 
   <div id="offline-card" role="status" aria-live="polite">
     <div>
@@ -19,6 +28,7 @@
 
   <script src="/static/renderer.js"></script>
   <script src="/static/arcreactor.js"></script>
+  <script src="/static/avatar3d.js"></script>
   <script src="/static/rainmeter.js"></script>
 </body>
 </html>
