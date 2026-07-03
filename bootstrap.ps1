@@ -34,8 +34,18 @@ if ($py) {
 }
 if (-not $havePython) {
     Step "Installing Python 3.12 (silent, ~30 MB download)"
+    if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        $pyArch = "arm64"
+        $pyHash = "8F653DD553B0430C0A5C0B2E9701B46DA187B61734066E8866B673A718A55F2C"
+    } else {
+        $pyArch = "amd64"
+        $pyHash = "71BD44E6B0E91C17558963557E4CDB80B483DE9B0A0A9717F06CF896F95AB598"
+    }
     $pyExe = Join-Path $env:TEMP "python-installer.exe"
-    Invoke-WebRequest "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe" -OutFile $pyExe
+    Invoke-WebRequest "https://www.python.org/ftp/python/3.12.8/python-3.12.8-$pyArch.exe" -OutFile $pyExe
+    if ((Get-FileHash $pyExe -Algorithm SHA256).Hash -ne $pyHash) {
+        throw "Python installer failed SHA-256 verification — download may be corrupted or tampered with. Install Python 3.12 manually from https://www.python.org/downloads/ and re-run."
+    }
     Start-Process $pyExe -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_launcher=0" -Wait
     Refresh-Path
     if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -56,6 +66,7 @@ if (Test-Path (Join-Path $dest "install.ps1")) {
     $extract = Join-Path $env:TEMP "visual_actor_extract"
     if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
     Expand-Archive $zip -DestinationPath $extract
+    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
     Move-Item (Join-Path $extract "visual_actor-base") $dest
     Write-Host "  + Downloaded to $dest" -ForegroundColor Green
 }
