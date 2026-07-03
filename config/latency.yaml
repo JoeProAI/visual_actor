@@ -13,10 +13,10 @@ budget:
 fallback:
   # If the active provider yields no first audio chunk within this many ms,
   # the router abandons it and advances to the next provider in the chain.
-  first_chunk_timeout_ms: 1
+  first_chunk_timeout_ms: 4000
   # Hard ceiling: if total time-to-first-audio exceeds this, force fallback
   # even if a chunk is "in flight".
-  hard_timeout_ms: 120
+  hard_timeout_ms: 8000
   # Max providers to attempt before giving up.
   max_attempts: 3
 

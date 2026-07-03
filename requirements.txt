@@ -18,6 +18,10 @@ python-dotenv>=1.0
 # the /stt endpoint returns 503 with guidance when absent.
 faster-whisper>=1.0
 
+# Local neural TTS (the default voice). Without this the app degrades to a
+# crude formant tone generator that is barely audible.
+piper-tts>=1.3
+
 # Optional heavy / hardware-specific runtimes. The system lazy-imports these and
 # degrades to deterministic CPU paths when they are absent, so install only what
 # your machine supports. Uncomment or `pip install '.[ml]'` to enable.
@@ -29,9 +33,8 @@ faster-whisper>=1.0
 # librosa>=0.10
 # av>=11.0
 
-# Optional voice backends (install at least ElevenLabs SDK for primary engine):
+# Optional voice backends:
 # elevenlabs>=1.0
-# piper-tts>=1.2
 # Fish Speech S2 is installed via scripts/ (see install.sh) because it is a
 # source checkout, not a stable PyPI wheel.
 
