@@ -100,6 +100,20 @@ Write-Host "Install complete." -ForegroundColor Green
 Write-Host "Launch any time with: .\run.bat   then open http://127.0.0.1:$Port/"
 if (-not $NoLaunch) {
     Step "Launching Visual Actor"
-    Start-Process "http://127.0.0.1:$Port/"
-    & powershell -ExecutionPolicy Bypass -File "scripts\windows_start_server.ps1" -Port $Port
+    # Open the browser once the server is listening (server runs in the foreground below).
+    $opener = Start-Job -ArgumentList $Port -ScriptBlock {
+        param($Port)
+        foreach ($i in 1..60) {
+            Start-Sleep -Seconds 1
+            try {
+                $client = New-Object Net.Sockets.TcpClient
+                $client.Connect("127.0.0.1", $Port)
+                $client.Close()
+                Start-Process "http://127.0.0.1:$Port/"
+                break
+            } catch { }
+        }
+    }
+    try { & powershell -ExecutionPolicy Bypass -File "scripts\windows_start_server.ps1" -Port $Port }
+    finally { $opener | Remove-Job -Force -ErrorAction SilentlyContinue }
 }
