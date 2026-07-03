@@ -9,7 +9,15 @@ three.js (falling back to the 2D portrait when the file is absent):
 ```
 export TRIPO3D_API_KEY=...   # https://platform.tripo3d.ai/api-keys
 python scripts/generate_avatar_tripo.py
+python scripts/add_jaw_morph.py   # synthesize the jawOpen morph so the lips move
 ```
+
+Tripo3D text-to-model heads are static (no rig or blendshapes), so
+`add_jaw_morph.py` appends a procedural `jawOpen` morph target that the
+renderer drives from the live audio envelope. `--rig` on the generate script
+tries Tripo3D's auto-rigger first, but busts fail its pre-rig check (it rigs
+full-body humanoids). Rigged models with a jaw bone or a GLB that already has
+ARKit-style blendshapes (e.g. Ready Player Me) work without this step.
 
 
 This directory holds **optional** local models. The system runs fully without

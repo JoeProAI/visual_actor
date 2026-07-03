@@ -882,5 +882,5 @@ class VisualActorClient {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  new VisualActorClient();
+  window.visualActorClient = new VisualActorClient();
 });
