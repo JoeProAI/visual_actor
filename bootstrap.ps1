@@ -61,16 +61,18 @@ $baseDir = (Get-Location).Path
 $winDirPrefix = $env:windir.TrimEnd('\') + '\'
 if ($baseDir -eq $env:windir -or $baseDir.StartsWith($winDirPrefix, [StringComparison]::OrdinalIgnoreCase)) { $baseDir = $HOME }
 $dest = Join-Path $baseDir "visual_actor"
-if (Test-Path (Join-Path $dest "install.ps1")) {
-    Write-Host "  + $dest already exists - using it" -ForegroundColor Green
+$zip = Join-Path $env:TEMP "visual_actor.zip"
+Invoke-WebRequest "https://codeload.github.com/JoeProAI/visual_actor/zip/refs/heads/base" -OutFile $zip
+$extract = Join-Path $env:TEMP "visual_actor_extract"
+if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+Expand-Archive $zip -DestinationPath $extract
+$src = Join-Path $extract "visual_actor-base"
+if (Test-Path $dest) {
+    # Refresh the code in place; local extras (.env, .venv, downloaded models) are preserved.
+    Copy-Item (Join-Path $src "*") $dest -Recurse -Force
+    Write-Host "  + Updated existing install at $dest (settings kept)" -ForegroundColor Green
 } else {
-    $zip = Join-Path $env:TEMP "visual_actor.zip"
-    Invoke-WebRequest "https://codeload.github.com/JoeProAI/visual_actor/zip/refs/heads/base" -OutFile $zip
-    $extract = Join-Path $env:TEMP "visual_actor_extract"
-    if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
-    Expand-Archive $zip -DestinationPath $extract
-    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
-    Move-Item (Join-Path $extract "visual_actor-base") $dest
+    Move-Item $src $dest
     Write-Host "  + Downloaded to $dest" -ForegroundColor Green
 }
 
