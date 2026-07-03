@@ -14,6 +14,7 @@ audio that still drives lip-sync, prosody and benchmarking end to end.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -77,8 +78,15 @@ class PiperProvider(TTSProvider):
         self.model_path = config.model_path or ""
         self._voice = None
         self._tried_load = False
+        self._load_lock = threading.Lock()
+        if self.model_path and Path(self.model_path).exists():
+            threading.Thread(target=self._load_voice, daemon=True).start()
 
     def _load_voice(self):
+        with self._load_lock:
+            return self._load_voice_locked()
+
+    def _load_voice_locked(self):
         if self._tried_load:
             return self._voice
         self._tried_load = True
