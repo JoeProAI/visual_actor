@@ -267,8 +267,114 @@ button {
 }
 
 .control-panel,
+.chat-panel,
 .report-panel {
   padding: 22px;
+}
+
+.chat-panel .input-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.chat-log {
+  max-height: 260px;
+  min-height: 96px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(8, 11, 18, 0.55);
+}
+
+.chat-empty {
+  margin: auto;
+  color: var(--muted-2);
+  font-size: 13px;
+}
+
+.chat-msg {
+  max-width: 86%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.chat-msg.user {
+  align-self: flex-end;
+  background: linear-gradient(180deg, rgba(145, 240, 205, 0.18), rgba(103, 212, 174, 0.14));
+  border: 1px solid rgba(124, 224, 189, 0.28);
+  color: var(--text);
+}
+
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: rgba(15, 20, 32, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+
+#chat-text {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(8, 11, 18, 0.72);
+  color: var(--text);
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+#chat-text::placeholder {
+  color: var(--muted-2);
+}
+
+#chat-text:focus {
+  border-color: rgba(124, 224, 189, 0.55);
+  box-shadow: 0 0 0 4px rgba(124, 224, 189, 0.12);
+  background: rgba(10, 14, 23, 0.92);
+}
+
+#chat-send {
+  min-width: 92px;
+  padding: 0 16px;
+  border-radius: 18px;
+  color: #051913;
+  font-weight: 800;
+  background: linear-gradient(180deg, #91f0cd 0%, #67d4ae 100%);
+  box-shadow: 0 14px 30px rgba(103, 212, 174, 0.24);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+#chat-send:hover {
+  transform: translateY(-1px);
+}
+
+.mic-button {
+  min-width: 48px;
+  border-radius: 18px;
+  font-size: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 20, 32, 0.85);
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.mic-button.recording {
+  border-color: rgba(255, 95, 130, 0.75);
+  background: rgba(255, 95, 130, 0.18);
+  box-shadow: 0 0 0 4px rgba(255, 95, 130, 0.14);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 95, 130, 0.12); }
+  50% { box-shadow: 0 0 0 7px rgba(255, 95, 130, 0.22); }
 }
 
 .label {
@@ -494,7 +600,8 @@ button {
     margin-bottom: 18px;
   }
 
-  .input-row {
+  .input-row,
+  .chat-panel .input-row {
     grid-template-columns: 1fr;
   }
 

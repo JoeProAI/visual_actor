@@ -15,6 +15,12 @@ const verdictPill = document.getElementById("verdict-pill");
 const reportBody = document.getElementById("report-body");
 const input = document.getElementById("text");
 const speakButton = document.getElementById("say");
+const chatLog = document.getElementById("chat-log");
+const chatInput = document.getElementById("chat-text");
+const chatSendButton = document.getElementById("chat-send");
+const chatPill = document.getElementById("chat-pill");
+const chatHint = document.getElementById("chat-hint");
+const micButton = document.getElementById("mic");
 const modeFaceButton = document.getElementById("mode-face");
 const modeReactorButton = document.getElementById("mode-reactor");
 
@@ -396,6 +402,96 @@ class AudioPlayer {
     this.started = false;
     if (this.ctx) this.nextTime = this.ctx.currentTime;
   }
+
+  flush() {
+    // Barge-in: drop everything queued by tearing down the context.
+    if (this.ctx) {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+      this.analyser = null;
+    }
+    this.started = false;
+    this.visualData.level = 0;
+    this.visualData.peak = 0;
+    this.visualData.active = false;
+  }
+}
+
+function encodeWav(float32, sampleRate) {
+  const pcm = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length * 2, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, pcm.length * 2, true);
+  return new Blob([header, pcm.buffer], { type: "audio/wav" });
+}
+
+class MicRecorder {
+  constructor() {
+    this.stream = null;
+    this.ctx = null;
+    this.source = null;
+    this.processor = null;
+    this.chunks = [];
+    this.recording = false;
+  }
+
+  async start() {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.source = this.ctx.createMediaStreamSource(this.stream);
+    this.processor = this.ctx.createScriptProcessor(4096, 1, 1);
+    this.chunks = [];
+    this.processor.onaudioprocess = (event) => {
+      this.chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    };
+    this.source.connect(this.processor);
+    this.processor.connect(this.ctx.destination);
+    this.recording = true;
+  }
+
+  stop() {
+    this.recording = false;
+    if (this.processor) this.processor.disconnect();
+    if (this.source) this.source.disconnect();
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    const sampleRate = this.ctx ? this.ctx.sampleRate : 48000;
+    if (this.ctx) this.ctx.close().catch(() => {});
+    let total = 0;
+    for (const c of this.chunks) total += c.length;
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const c of this.chunks) {
+      merged.set(c, offset);
+      offset += c.length;
+    }
+    this.chunks = [];
+    this.processor = null;
+    this.source = null;
+    this.stream = null;
+    this.ctx = null;
+    return { samples: merged, sampleRate };
+  }
 }
 
 class VisualActorClient {
@@ -449,6 +545,16 @@ class VisualActorClient {
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") this.say();
     });
+
+    this.mic = new MicRecorder();
+    this.transcribing = false;
+    this.chatBusy = false;
+    this.assistantBubble = null;
+    chatSendButton.addEventListener("click", () => this.sendChat());
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.sendChat();
+    });
+    micButton.addEventListener("click", () => this.toggleMic());
 
     window.addEventListener("resize", () => resizeCanvasToDisplaySize(canvas));
     this.connect();
@@ -559,9 +665,33 @@ class VisualActorClient {
           this.setStatus("ready", "Ready", "Live stream connected.");
           this.updateSpeakButton();
           break;
+        case "chat_delta":
+          this.appendAssistantText(msg.text);
+          break;
+        case "chat_done":
+          this.assistantBubble = null;
+          this.setChatState("neutral", "Idle");
+          this.chatBusy = false;
+          this.finishSession(performance.now());
+          this.setStatus("ready", "Ready", "Live stream connected.");
+          break;
+        case "stopped":
+          this.assistantBubble = null;
+          this.setChatState("neutral", "Idle");
+          this.chatBusy = false;
+          this.finishSession(performance.now());
+          break;
         case "pong":
           break;
         case "error":
+          if (this.chatBusy) {
+            this.chatBusy = false;
+            this.assistantBubble = null;
+            this.setChatState("fail", "Error");
+            chatHint.textContent = msg.message || "Conversation error";
+            this.finishSession(performance.now());
+            break;
+          }
           this.setStatus("disconnected", "Disconnected", msg.message || "Server error");
           this.finishSession();
           this.updateSpeakButton();
@@ -595,6 +725,107 @@ class VisualActorClient {
       this.audioStartedTelemetrySent = true;
     }
     this.send({ type: "telemetry", event, t_ms: performance.now() });
+  }
+
+  setChatState(state, label) {
+    chatPill.textContent = label;
+    chatPill.className = `verdict-pill ${state}`;
+  }
+
+  appendChatMessage(role, text) {
+    const empty = chatLog.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    const bubble = document.createElement("div");
+    bubble.className = `chat-msg ${role}`;
+    bubble.textContent = text;
+    chatLog.appendChild(bubble);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return bubble;
+  }
+
+  appendAssistantText(text) {
+    if (!this.assistantBubble) {
+      this.assistantBubble = this.appendChatMessage("assistant", text);
+    } else {
+      this.assistantBubble.textContent += ` ${text}`;
+    }
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  bargeIn() {
+    if (this.busy || this.sessionActive || this.chatBusy) {
+      this.send({ type: "stop" });
+      this.audio.flush();
+      this.assistantBubble = null;
+    }
+  }
+
+  sendChat(textOverride) {
+    const text = (textOverride !== undefined ? textOverride : chatInput.value).trim();
+    if (!text || !this.connected) return;
+    this.bargeIn();
+    chatInput.value = "";
+    chatHint.textContent = "";
+    this.appendChatMessage("user", text);
+    this.assistantBubble = null;
+    this.chatBusy = true;
+    this.busy = true;
+    this.sessionActive = true;
+    this.idleTransitionAt = 0;
+    this.firstFrameTelemetrySent = false;
+    this.audioStartedTelemetrySent = false;
+    this.audio.reset();
+    this.updateSpeakButton();
+    this.setChatState("neutral", "Thinking…");
+    this.send({ type: "chat", text });
+  }
+
+  async toggleMic() {
+    if (this.transcribing) return;
+    if (this.mic.recording) {
+      micButton.setAttribute("aria-pressed", "false");
+      micButton.classList.remove("recording");
+      const { samples, sampleRate } = this.mic.stop();
+      if (samples.length < sampleRate * 0.3) {
+        chatHint.textContent = "Too short — hold the mic a bit longer.";
+        return;
+      }
+      this.transcribing = true;
+      this.setChatState("neutral", "Transcribing…");
+      try {
+        const wav = encodeWav(samples, sampleRate);
+        const resp = await fetch("/stt", { method: "POST", body: wav, headers: { "Content-Type": "audio/wav" } });
+        const data = await resp.json();
+        if (!resp.ok) {
+          chatHint.textContent = data.error || "Transcription failed";
+          this.setChatState("fail", "STT error");
+          return;
+        }
+        if (!data.text) {
+          chatHint.textContent = "Didn't catch that — try again.";
+          this.setChatState("neutral", "Idle");
+          return;
+        }
+        this.sendChat(data.text);
+      } catch (err) {
+        chatHint.textContent = "Transcription request failed";
+        this.setChatState("fail", "STT error");
+      } finally {
+        this.transcribing = false;
+      }
+      return;
+    }
+    try {
+      this.bargeIn();
+      await this.mic.start();
+      micButton.setAttribute("aria-pressed", "true");
+      micButton.classList.add("recording");
+      this.setChatState("neutral", "Listening…");
+      chatHint.textContent = "Click the mic again when you're done talking.";
+    } catch (err) {
+      chatHint.textContent = "Microphone unavailable — check browser permissions.";
+      this.setChatState("fail", "No mic");
+    }
   }
 
   say() {

@@ -50,8 +50,27 @@
       </section>
 
       <aside class="stack">
+        <section class="panel chat-panel">
+          <div class="report-head">
+            <div>
+              <h2>Conversation</h2>
+              <p>Talk with the actor — replies are spoken live.</p>
+            </div>
+            <span id="chat-pill" class="verdict-pill neutral">Idle</span>
+          </div>
+          <div id="chat-log" class="chat-log" aria-live="polite">
+            <p class="chat-empty">Say hi — type below or hold the mic.</p>
+          </div>
+          <div class="input-row">
+            <button id="mic" type="button" class="mic-button" aria-pressed="false" title="Toggle microphone">🎤</button>
+            <input id="chat-text" type="text" placeholder="Say something to her…" autocomplete="off" />
+            <button id="chat-send" type="button">Send</button>
+          </div>
+          <p id="chat-hint" class="connection-hint"></p>
+        </section>
+
         <section class="panel control-panel">
-          <label class="label" for="text">What should the actor say?</label>
+          <label class="label" for="text">Or make her say an exact line</label>
           <div class="input-row">
             <input id="text" type="text" placeholder="Type something for the actor to say…" value="Hello! I am your local real time visual actor." />
             <button id="say" type="button">Speak</button>

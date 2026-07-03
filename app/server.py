@@ -179,14 +179,16 @@ class VisualActorEngine:
                 done.set()
 
         anim = asyncio.create_task(animation_loop())
-        await tts_loop()
-        # let animation drain remaining playback
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(anim, timeout=max(2.0, clock.duration_ms / 1000.0 + 1.0))
-        if not anim.done():
-            anim.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await anim
+        try:
+            await tts_loop()
+            # let animation drain remaining playback
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(anim, timeout=max(2.0, clock.duration_ms / 1000.0 + 1.0))
+        finally:
+            if not anim.done():
+                anim.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await anim
 
         result.sync_offset_ms = session.sync_offset_ms()
         await self.bus.publish("session.complete", request_id=request_id, provider=result.provider)

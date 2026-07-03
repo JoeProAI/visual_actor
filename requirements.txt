@@ -13,6 +13,10 @@ psutil>=5.9
 rich>=13.7
 python-dotenv>=1.0
 
+# Conversation voice input (mic -> text). CPU int8 whisper; optional at runtime,
+# the /stt endpoint returns 503 with guidance when absent.
+faster-whisper>=1.0
+
 # Optional heavy / hardware-specific runtimes. The system lazy-imports these and
 # degrades to deterministic CPU paths when they are absent, so install only what
 # your machine supports. Uncomment or `pip install '.[ml]'` to enable.
