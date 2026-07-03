@@ -120,7 +120,9 @@ const VisualActorAvatar3D = (() => {
       for (const m of this.morphMeshes) {
         const inf = m.mesh.morphTargetInfluences;
         if (m.jawOpen >= 0) {
-          inf[m.jawOpen] = this.mouthOpen;
+          // Boost the envelope: TTS jawOpen rarely exceeds ~0.4, but the
+          // morph is authored to look natural near full influence.
+          inf[m.jawOpen] = Math.min(1, this.mouthOpen * 2.2);
           morphDrove = true;
         }
         if (m.blink >= 0) inf[m.blink] = blink;
