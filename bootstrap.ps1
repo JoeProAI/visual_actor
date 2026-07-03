@@ -58,7 +58,8 @@ if (-not $havePython) {
 
 Step "Downloading Visual Actor (no Git needed)"
 $baseDir = (Get-Location).Path
-if ($baseDir.StartsWith($env:windir, [StringComparison]::OrdinalIgnoreCase)) { $baseDir = $HOME }
+$winDirPrefix = $env:windir.TrimEnd('\') + '\'
+if ($baseDir -eq $env:windir -or $baseDir.StartsWith($winDirPrefix, [StringComparison]::OrdinalIgnoreCase)) { $baseDir = $HOME }
 $dest = Join-Path $baseDir "visual_actor"
 if (Test-Path (Join-Path $dest "install.ps1")) {
     Write-Host "  + $dest already exists - using it" -ForegroundColor Green
