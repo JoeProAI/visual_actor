@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Visual Actor — one-command install for Windows.
+    Visual Actor - one-command install for Windows.
 
 .DESCRIPTION
     Creates a virtualenv, installs dependencies, prepares .env, downloads the
@@ -54,7 +54,7 @@ foreach ($key in @("OPENROUTER_API_KEY", "TRIPO3D_API_KEY")) {
             $envText = $envText -replace "(?m)^$key=\s*$", "$key=$value"
             Set-Content ".env" $envText -NoNewline
             Ok "$key saved to .env"
-        } else { Warn "$key skipped — related feature will be disabled until set in .env" }
+        } else { Warn "$key skipped - related feature will be disabled until set in .env" }
     }
 }
 
@@ -68,12 +68,12 @@ if (-not (Test-Path $piperOnnx)) {
         Invoke-WebRequest "$base/en_US-amy-low.onnx" -OutFile $piperOnnx
         Invoke-WebRequest "$base/en_US-amy-low.onnx.json" -OutFile "$piperOnnx.json"
         Ok "Piper voice downloaded"
-    } catch { Warn "Piper voice download failed — formant fallback will be used." }
+    } catch { Warn "Piper voice download failed - formant fallback will be used." }
 } else { Ok "Piper voice present" }
 
 Step "Checking WebView2 (Rainmeter widget)"
 try { & powershell -ExecutionPolicy Bypass -File "scripts\install_webview2.ps1"; Ok "WebView2 OK" }
-catch { Warn "WebView2 check failed — only needed for the Rainmeter widget." }
+catch { Warn "WebView2 check failed - only needed for the Rainmeter widget." }
 
 Step "3D avatar head"
 $model = "app\assets\models\avatar_head.glb"
@@ -88,7 +88,7 @@ if (Test-Path $model) {
     & $venvPy "scripts\add_jaw_morph.py"
     Ok "3D head generated with moving lips"
 } else {
-    Warn "No TRIPO3D_API_KEY — Face mode will use the built-in 2D portrait."
+    Warn "No TRIPO3D_API_KEY - Face mode will use the built-in 2D portrait."
     Warn "Set the key in .env and run: python scripts\generate_avatar_tripo.py; python scripts\add_jaw_morph.py"
 }
 
