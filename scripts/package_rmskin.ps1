@@ -3,8 +3,8 @@
     Packages the VisualActor Rainmeter skin into a valid .rmskin file.
 
 .DESCRIPTION
-    A .rmskin file is a standard ZIP archive with a 15-byte Rainmeter footer
-    appended:  <int64 archiveSize><byte flags>"RMSKIN".  The archive layout is:
+    A .rmskin file is a standard ZIP archive with a 16-byte Rainmeter footer
+    appended:  <int64 archiveSize><byte flags>"RMSKIN\0".  The archive layout is:
 
         RMSKIN.ini                         (package metadata, at archive root)
         Skins/VisualActor/...              (the skin folder + Resources + .ps1)
@@ -80,12 +80,15 @@ if (Test-Path $OutFile)  { Remove-Item $OutFile -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory(
     $stage, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 
-# 3. Append the Rainmeter footer:  <int64 size><byte flags>"RMSKIN".
+# 3. Append the 16-byte Rainmeter footer:  <int64 size><byte flags>"RMSKIN\0".
+#    The magic key is the null-terminated 7-byte string; without the trailing
+#    NUL the Skin Installer rejects the package as invalid.
 $bytes  = [System.IO.File]::ReadAllBytes($zipPath)
 $footer = [System.Collections.Generic.List[byte]]::new()
 $footer.AddRange([System.BitConverter]::GetBytes([int64]$bytes.Length))   # archive size
 $footer.Add([byte]0)                                                       # flags (0 = zip)
 $footer.AddRange([System.Text.Encoding]::ASCII.GetBytes("RMSKIN"))         # magic
+$footer.Add([byte]0)                                                       # NUL terminator
 [System.IO.File]::WriteAllBytes($OutFile, $bytes + $footer.ToArray())
 
 Remove-Item $zipPath -Force
