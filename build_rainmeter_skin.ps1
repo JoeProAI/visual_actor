@@ -3,7 +3,7 @@
     Build VisualActor.rmskin from the Rainmeter skin sources.
 
 .DESCRIPTION
-    Thin wrapper that (1) regenerates Resources/variables.inc from
+    Thin wrapper that (1) regenerates @Resources/variables.inc from
     config/rainmeter.yaml + RAINMETER_* environment variables so the packaged
     widget matches your config, then (2) delegates to scripts/package_rmskin.ps1
     to produce a valid .rmskin (ZIP + Rainmeter footer).
@@ -18,7 +18,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$varsInc = Join-Path $root "rainmeter\VisualActor\Resources\variables.inc"
+$varsInc = Join-Path $root "rainmeter\VisualActor\@Resources\variables.inc"
 
 function Get-EnvOrDefault($name, $default) {
     $v = [System.Environment]::GetEnvironmentVariable($name)
