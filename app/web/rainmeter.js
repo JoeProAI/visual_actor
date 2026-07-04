@@ -183,7 +183,7 @@ class RainmeterClient {
         Avatar.drawAvatar(ctx, this.serverPose, canvas.width, canvas.height, { background: false });
       }
     } else {
-      ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, performance.now(), this.reactorState);
+      ArcReactor.draw(ctx, canvas.width, canvas.height, audioData, performance.now(), this.reactorState, { transparent: true });
     }
     requestAnimationFrame((t) => this.renderLoop(t));
   }

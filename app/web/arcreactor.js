@@ -362,7 +362,7 @@ const VisualActorArcReactor = (() => {
     ctx.restore();
   }
 
-  function draw(ctx, W, H, audioData, tMs, state = DEFAULT_STATE) {
+  function draw(ctx, W, H, audioData, tMs, state = DEFAULT_STATE, opts = {}) {
     const audio = getAudioData(audioData);
     const dt = state.lastMs ? clamp(tMs - state.lastMs, 0, 48) : 16;
     state.lastMs = tMs;
@@ -384,7 +384,7 @@ const VisualActorArcReactor = (() => {
     const ribbonRadius = size * 0.235;
     const orbitRadius = size * 0.36;
 
-    drawBackground(ctx, W, H, state);
+    if (!opts.transparent) drawBackground(ctx, W, H, state);
     drawParticles(ctx, cx, cy, ribbonRadius, dt, state);
     drawOrbits(ctx, cx, cy, orbitRadius, state);
     drawRibbons(ctx, cx, cy, ribbonRadius, tMs, audio, state);
