@@ -25,10 +25,10 @@ def test_required_ini_files_exist():
 
 
 def test_resources_exist():
-    res = SKIN / "Resources"
+    res = SKIN / "@Resources"
     for name in ("variables.inc", "styles.inc", "actions.inc",
                  "launch_server.ps1", "stop_server.ps1", "check_server.ps1", "icon.ico"):
-        assert (res / name).exists(), f"missing Resources/{name}"
+        assert (res / name).exists(), f"missing @Resources/{name}"
 
 
 def test_webview_host_loads_server_url():
@@ -39,7 +39,7 @@ def test_webview_host_loads_server_url():
 
 
 def test_variables_default_url():
-    txt = (SKIN / "Resources" / "variables.inc").read_text(encoding="utf-8")
+    txt = (SKIN / "@Resources" / "variables.inc").read_text(encoding="utf-8")
     assert "http://127.0.0.1:8765/rainmeter" in txt
 
 

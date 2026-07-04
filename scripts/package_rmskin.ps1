@@ -7,7 +7,7 @@
     appended:  <int64 archiveSize><byte flags>"RMSKIN\0".  The archive layout is:
 
         RMSKIN.ini                         (package metadata, at archive root)
-        Skins/VisualActor/...              (the skin folder + Resources + .ps1)
+        Skins/VisualActor/...              (the skin folder + @Resources + .ps1)
 
     This script stages that layout, zips it, and appends the footer. The result
     installs via the Rainmeter Skin Installer like any official package.
