@@ -47,7 +47,11 @@ else { Ok ".env already present" }
 
 # Offer to capture missing keys interactively (stored only in local .env).
 $envText = Get-Content ".env" -Raw
-foreach ($key in @("OPENROUTER_API_KEY", "TRIPO3D_API_KEY")) {
+foreach ($key in @("OPENROUTER_API_KEY", "TRIPO3D_API_KEY", "ELEVENLABS_API_KEY")) {
+    if ($envText -notmatch "(?m)^$key=") {
+        $envText = $envText.TrimEnd() + "`r`n$key=`r`n"
+        Set-Content ".env" $envText -NoNewline
+    }
     if ($envText -match "(?m)^$key=\s*$") {
         $value = Read-Host "  Enter $key (or press Enter to skip)"
         if ($value) {
