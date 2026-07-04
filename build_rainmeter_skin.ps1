@@ -66,7 +66,7 @@ StatusPollMs=3000
 ServerStart=#@#launch_server.ps1
 ServerStop=#@#stop_server.ps1
 ServerCheck=#@#check_server.ps1
-"@ | Set-Content -Encoding UTF8 $varsInc
+"@ | Set-Content -Encoding ASCII $varsInc
 
 & (Join-Path $root "scripts\package_rmskin.ps1") -OutFile $OutFile
 Write-Output "Done."
